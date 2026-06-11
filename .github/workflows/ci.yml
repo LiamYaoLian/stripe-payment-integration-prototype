@@ -42,6 +42,10 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
   integration:
     runs-on: ubuntu-latest
     services:

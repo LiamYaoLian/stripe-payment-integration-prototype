@@ -14,8 +14,9 @@ type FakeWebhookStore struct {
 	Ignored      []string
 	Claimed      []string
 	StatusUpdate []string
-	ClaimOK      bool
-	UpdateErr    error
+	ClaimOK            bool
+	UpdateErr          error
+	GetWebhookEventErr error
 }
 
 func NewFakeWebhookStore() *FakeWebhookStore {
@@ -27,6 +28,9 @@ func NewFakeWebhookStore() *FakeWebhookStore {
 }
 
 func (f *FakeWebhookStore) GetWebhookEvent(_ context.Context, stripeEventID string) (*db.WebhookEvent, error) {
+	if f.GetWebhookEventErr != nil {
+		return nil, f.GetWebhookEventErr
+	}
 	if event, ok := f.Events[stripeEventID]; ok {
 		return event, nil
 	}
@@ -58,9 +62,10 @@ func (f *FakeWebhookStore) ClaimWebhookEvent(_ context.Context, stripeEventID st
 	return true, nil
 }
 
-func (f *FakeWebhookStore) MarkWebhookProcessed(_ context.Context, stripeEventID string) error {
+func (f *FakeWebhookStore) MarkWebhookProcessed(_ context.Context, stripeEventID string, orderID *string) error {
 	if event, ok := f.Events[stripeEventID]; ok {
 		event.ProcessingStatus = domain.WebhookStatusProcessed
+		event.OrderID = orderID
 	}
 	return nil
 }

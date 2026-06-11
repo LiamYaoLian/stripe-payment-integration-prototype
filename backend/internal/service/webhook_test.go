@@ -264,6 +264,29 @@ func TestWebhookHandleFailedEventRetryReturns500(t *testing.T) {
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
 
+func TestWebhookHandleMissingOrderReturnsFailed(t *testing.T) {
+	raw, err := os.ReadFile("../handler/testdata/checkout.session.completed.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := testutil.NewFakeWebhookStore()
+	svc := NewWebhookService(store, testutil.TestWebhookSecret)
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
+}
+
+func TestWebhookHandleStoreErrorReturnsRetryWithoutGoError(t *testing.T) {
+	raw, err := os.ReadFile("../handler/testdata/checkout.session.completed.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := testutil.NewFakeWebhookStore()
+	store.GetWebhookEventErr = errors.New("db down")
+	svc := NewWebhookService(store, testutil.TestWebhookSecret)
+	outcome, goErr := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, goErr, WebhookOutcomeRetryLater)
+}
+
 func TestWebhookHandleAsyncPaymentFailed(t *testing.T) {
 	payload := []byte(`{
 		"id": "evt_failed",

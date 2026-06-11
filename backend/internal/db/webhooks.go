@@ -46,11 +46,12 @@ func (s *Store) ClaimWebhookEvent(ctx context.Context, stripeEventID string) (bo
 }
 
 // MarkWebhookProcessed marks a processing webhook event as successfully processed.
-func (s *Store) MarkWebhookProcessed(ctx context.Context, stripeEventID string) error {
+func (s *Store) MarkWebhookProcessed(ctx context.Context, stripeEventID string, orderID *string) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE webhook_events SET processing_status = $2::webhook_processing_status, processed_at = now()
+		UPDATE webhook_events SET processing_status = $2::webhook_processing_status,
+			processed_at = now(), order_id = COALESCE($4, order_id)
 		WHERE stripe_event_id = $1 AND processing_status::text = $3`,
-		stripeEventID, domain.WebhookStatusProcessed, domain.WebhookStatusProcessing)
+		stripeEventID, domain.WebhookStatusProcessed, domain.WebhookStatusProcessing, orderID)
 	return err
 }
 

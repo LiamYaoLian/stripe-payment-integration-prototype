@@ -161,7 +161,8 @@ func TestIntegrationStoreWebhookEventLifecycle(t *testing.T) {
 		t.Fatalf("second claim claimed=%v err=%v", claimed, err)
 	}
 
-	if err := store.MarkWebhookProcessed(ctx, eventID); err != nil {
+	orderID := xid.New().String()
+	if err := store.MarkWebhookProcessed(ctx, eventID, &orderID); err != nil {
 		t.Fatal(err)
 	}
 	event, err = store.GetWebhookEvent(ctx, eventID)

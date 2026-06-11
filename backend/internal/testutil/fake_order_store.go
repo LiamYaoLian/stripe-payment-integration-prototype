@@ -82,6 +82,16 @@ func (f *FakeOrderStore) GetProduct(_ context.Context, id string) (*db.Product, 
 	return nil, nil
 }
 
+func (f *FakeOrderStore) GetProductsByIDs(_ context.Context, ids []string) (map[string]db.Product, error) {
+	result := make(map[string]db.Product, len(ids))
+	for _, id := range ids {
+		if product, ok := f.Products[id]; ok && product.Active {
+			result[id] = product
+		}
+	}
+	return result, nil
+}
+
 func (f *FakeOrderStore) CreateOrderWithItems(_ context.Context, order db.CreateOrderParams, items []db.CreateOrderItemParams) error {
 	meta := order.Metadata
 	if meta == nil {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
 	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
 )
@@ -45,6 +46,7 @@ type orderStore interface {
 	GetOrderByIdempotencyKey(ctx context.Context, key string) (*db.Order, error)
 	ClearOrderIdempotencyKey(ctx context.Context, orderID string) error
 	GetProduct(ctx context.Context, id string) (*db.Product, error)
+	GetProductsByIDs(ctx context.Context, ids []string) (map[string]db.Product, error)
 	CreateOrderWithItems(ctx context.Context, order db.CreateOrderParams, items []db.CreateOrderItemParams) error
 	UpdateOrderSession(ctx context.Context, orderID, sessionID, checkoutURL, clientSecret string) error
 	CancelOrder(ctx context.Context, orderID, reason string) error
@@ -87,6 +89,9 @@ func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string) 
 // CreateCheckoutSession validates input, creates a pending order, and starts Stripe checkout.
 func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey string, input CreateCheckoutInput) (*CheckoutResult, error) {
 	if err := validateCheckoutInput(input); err != nil {
+		return nil, err
+	}
+	if err := validateIdempotencyKey(idempotencyKey); err != nil {
 		return nil, err
 	}
 
@@ -155,10 +160,10 @@ func replayCheckout(order *db.Order) *CheckoutResult {
 	if order.StripeCheckoutSessionID != nil {
 		result.SessionID = *order.StripeCheckoutSessionID
 	}
-	if order.UIMode == "hosted" && order.StripeCheckoutURL != nil {
+	if order.UIMode == domain.UIModeHosted && order.StripeCheckoutURL != nil {
 		result.URL = *order.StripeCheckoutURL
 	}
-	if order.UIMode == "embedded" && order.StripeClientSecret != nil {
+	if order.UIMode == domain.UIModeEmbedded && order.StripeClientSecret != nil {
 		result.ClientSecret = *order.StripeClientSecret
 	}
 	return result
@@ -174,16 +179,4 @@ func extractRequestHash(meta json.RawMessage) string {
 		return ""
 	}
 	return value
-}
-
-func validateMetadata(meta map[string]string) error {
-	if len(meta) > 50 {
-		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata exceeds 50 keys"}
-	}
-	for _, value := range meta {
-		if len(value) > 500 {
-			return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata value exceeds 500 chars"}
-		}
-	}
-	return nil
 }

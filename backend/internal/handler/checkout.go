@@ -21,6 +21,10 @@ func NewCheckoutHandler(orders *service.OrderService) *CheckoutHandler {
 func (h *CheckoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var input service.CreateCheckoutInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		if isRequestBodyTooLarge(err) {
+			writeBodyTooLarge(w)
+			return
+		}
 		api.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid json body")
 		return
 	}

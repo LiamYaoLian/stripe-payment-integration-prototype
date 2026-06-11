@@ -21,6 +21,10 @@ func NewWebhooksHandler(webhooks *service.WebhookService) *WebhooksHandler {
 func (h *WebhooksHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		if isRequestBodyTooLarge(err) {
+			writeBodyTooLarge(w)
+			return
+		}
 		api.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "failed to read body")
 		return
 	}

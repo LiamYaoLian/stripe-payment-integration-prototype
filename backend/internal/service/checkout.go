@@ -27,16 +27,6 @@ type checkoutURLs struct {
 	returnURL  *string
 }
 
-func validateCheckoutInput(input CreateCheckoutInput) error {
-	if input.UIMode != "hosted" && input.UIMode != "embedded" {
-		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "uiMode must be hosted or embedded"}
-	}
-	if len(input.Items) == 0 {
-		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "items required"}
-	}
-	return validateMetadata(input.Metadata)
-}
-
 func (s *OrderService) resolveIdempotency(
 	ctx context.Context,
 	idempotencyKey string,
@@ -75,15 +65,18 @@ func (s *OrderService) buildCheckoutLineItems(ctx context.Context, items []Check
 		db:     make([]db.CreateOrderItemParams, 0, len(items)),
 	}
 
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ProductID)
+	}
+	products, err := s.store.GetProductsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	for index, item := range items {
-		if item.Quantity < 1 {
-			return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "quantity must be positive"}
-		}
-		product, err := s.store.GetProduct(ctx, item.ProductID)
-		if err != nil {
-			return nil, err
-		}
-		if product == nil {
+		product, ok := products[item.ProductID]
+		if !ok {
 			return nil, &api.AppError{Status: 404, Code: "PRODUCT_NOT_FOUND", Message: fmt.Sprintf("product not found: %s", item.ProductID)}
 		}
 		if index == 0 {
@@ -124,7 +117,7 @@ func (s *OrderService) buildCheckoutLineItems(ctx context.Context, items []Check
 }
 
 func (s *OrderService) buildCheckoutURLs(uiMode string) checkoutURLs {
-	if uiMode == "hosted" {
+	if uiMode == domain.UIModeHosted {
 		success := fmt.Sprintf("%s/checkout/success?session_id={CHECKOUT_SESSION_ID}", s.frontendURL)
 		cancel := fmt.Sprintf("%s/checkout/cancel", s.frontendURL)
 		return checkoutURLs{successURL: &success, cancelURL: &cancel}
@@ -202,7 +195,7 @@ func (s *OrderService) buildStripeSessionParams(
 	if emailPtr != nil {
 		params.CustomerEmail = stripe.String(*emailPtr)
 	}
-	if input.UIMode == "hosted" {
+	if input.UIMode == domain.UIModeHosted {
 		params.SuccessURL = stripe.String(*urls.successURL)
 		params.CancelURL = stripe.String(*urls.cancelURL)
 	} else {
@@ -256,7 +249,7 @@ func buildCheckoutResult(orderID, orderNumber string, uiMode string, session *st
 	result := &CheckoutResult{
 		OrderID: orderID, OrderNumber: orderNumber, SessionID: session.ID,
 	}
-	if uiMode == "hosted" {
+	if uiMode == domain.UIModeHosted {
 		result.URL = session.URL
 	} else {
 		result.ClientSecret = session.ClientSecret

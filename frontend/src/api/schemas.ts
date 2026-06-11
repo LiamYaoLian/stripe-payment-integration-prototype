@@ -7,6 +7,7 @@ export const orderStatusSchema = z.enum([
   'failed',
   'expired',
   'canceled',
+  'refunded',
 ])
 
 export const productSchema = z.object({
@@ -33,13 +34,17 @@ export const orderSchema = z.object({
   items: z.array(orderItemSchema),
 })
 
-export const checkoutSessionResultSchema = z.object({
-  orderId: z.string(),
-  orderNumber: z.string(),
-  sessionId: z.string(),
-  url: z.string().optional(),
-  clientSecret: z.string().optional(),
-})
+export const checkoutSessionResultSchema = z
+  .object({
+    orderId: z.string(),
+    orderNumber: z.string(),
+    sessionId: z.string(),
+    url: z.string().optional(),
+    clientSecret: z.string().optional(),
+  })
+  .refine((data) => Boolean(data.url || data.clientSecret), {
+    message: 'checkout session must include url or clientSecret',
+  })
 
 const errorBodySchema = z.object({
   code: z.string(),
