@@ -10,9 +10,13 @@ import (
 	"github.com/rs/xid"
 )
 
+func newTestAuthService() (*AuthService, *testutil.FakeAuthStore) {
+	store := testutil.NewFakeAuthStore()
+	return NewAuthService(store, store, store, "http://localhost:5173", "development"), store
+}
+
 func TestRegisterRequiresValidInput(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	svc := NewAuthService(store, "test-secret")
+	svc, _ := newTestAuthService()
 
 	_, err := svc.Register(context.Background(), "", "password123")
 	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 400 {
@@ -26,8 +30,7 @@ func TestRegisterRequiresValidInput(t *testing.T) {
 }
 
 func TestRegisterRejectsDuplicateEmail(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	svc := NewAuthService(store, "test-secret")
+	svc, _ := newTestAuthService()
 
 	_, err := svc.Register(context.Background(), "buyer@example.com", "password123")
 	if err != nil {
@@ -41,27 +44,27 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 }
 
 func TestRegisterSuccess(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	email := "buyer@example.com"
-	svc := NewAuthService(store, "test-secret")
+	svc, store := newTestAuthService()
 
-	result, err := svc.Register(context.Background(), email, "password123")
+	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Token == "" || result.User.Email != email {
+	if result.SessionToken == "" || result.User.Email != "buyer@example.com" {
 		t.Fatalf("result %+v", result)
 	}
+	if len(store.EmailVerifyByTokenHash) != 1 {
+		t.Fatal("expected email verification token")
+	}
 
-	claims, err := auth.VerifyUserToken("test-secret", result.Token)
-	if err != nil || claims.Email != email {
-		t.Fatalf("claims %+v err=%v", claims, err)
+	session, err := store.GetUserSessionByTokenHash(context.Background(), auth.HashOpaqueToken(result.SessionToken))
+	if err != nil || session == nil {
+		t.Fatalf("session %+v err=%v", session, err)
 	}
 }
 
 func TestLoginInvalidCredentials(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	svc := NewAuthService(store, "test-secret")
+	svc, _ := newTestAuthService()
 
 	_, err := svc.Login(context.Background(), "missing@example.com", "password123")
 	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
@@ -80,8 +83,7 @@ func TestLoginInvalidCredentials(t *testing.T) {
 }
 
 func TestLoginSuccess(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	svc := NewAuthService(store, "test-secret")
+	svc, _ := newTestAuthService()
 
 	_, err := svc.Register(context.Background(), "buyer@example.com", "password123")
 	if err != nil {
@@ -92,14 +94,27 @@ func TestLoginSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Token == "" {
-		t.Fatal("expected token")
+	if result.SessionToken == "" {
+		t.Fatal("expected session token")
+	}
+}
+
+func TestLogoutRevokesSession(t *testing.T) {
+	svc, store := newTestAuthService()
+	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Logout(context.Background(), result.SessionToken); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.SessionsByTokenHash) != 0 {
+		t.Fatal("expected session revoked")
 	}
 }
 
 func TestGetUser(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	svc := NewAuthService(store, "test-secret")
+	svc, _ := newTestAuthService()
 
 	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
 	if err != nil {
@@ -117,5 +132,51 @@ func TestGetUser(t *testing.T) {
 	_, err = svc.GetUser(context.Background(), xid.New().String())
 	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
 		t.Fatalf("expected unauthorized, got %v", err)
+	}
+}
+
+func TestResetPassword(t *testing.T) {
+	svc, store := newTestAuthService()
+	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resetToken := "reset-token-123"
+	store.StorePasswordResetToken(resetToken, result.User.ID)
+
+	if err := svc.ResetPassword(context.Background(), resetToken, "newpassword1"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.Login(context.Background(), "buyer@example.com", "newpassword1")
+	if err != nil {
+		t.Fatalf("login with new password failed: %v", err)
+	}
+}
+
+func TestVerifyEmail(t *testing.T) {
+	svc, store := newTestAuthService()
+	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.User.EmailVerified {
+		t.Fatal("expected unverified email")
+	}
+
+	verifyToken := "verify-token"
+	store.EmailVerifyByTokenHash[auth.HashOpaqueToken(verifyToken)] = result.User.ID
+
+	if err := svc.VerifyEmail(context.Background(), verifyToken); err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := svc.GetUser(context.Background(), result.User.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !user.EmailVerified {
+		t.Fatal("expected verified email")
 	}
 }

@@ -37,12 +37,16 @@ export const orderSchema = z.object({
 export const userProfileSchema = z.object({
   id: z.string(),
   email: z.string(),
+  emailVerified: z.boolean(),
 })
 
 export const authSessionSchema = z.object({
-  token: z.string(),
   expiresAt: z.string(),
   user: userProfileSchema,
+})
+
+export const messageSchema = z.object({
+  message: z.string(),
 })
 
 export const checkoutSessionResultSchema = z

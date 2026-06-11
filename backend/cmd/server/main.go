@@ -54,7 +54,7 @@ func main() {
 		cfg.IgnoreStripeAPIVersionMismatch,
 		cfg.StripeAPIVersion,
 	)
-	authSvc := service.NewAuthService(store, cfg.AuthJWTSecret)
+	authSvc := service.NewAuthService(store, store, store, cfg.AppFrontendURL, cfg.Env)
 
 	tracingServiceName := ""
 	if cfg.OtelExporterOTLPEndpoint != "" {
@@ -67,8 +67,10 @@ func main() {
 		Orders:             orderSvc,
 		Webhooks:           webhookSvc,
 		Auth:               authSvc,
+		Sessions:           store,
+		RateLimits:         store,
 		CORSOrigin:         cfg.CORSOrigin,
-		AuthJWTSecret:      cfg.AuthJWTSecret,
+		SecureCookies:      cfg.Env == "production",
 		MetricsEnabled:     cfg.MetricsEnabled,
 		MetricsAPIKey:      cfg.MetricsAPIKey,
 		TracingServiceName: tracingServiceName,

@@ -14,9 +14,9 @@ import (
 )
 
 func TestAuthRegisterAndMe(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	authSvc := service.NewAuthService(store, "test-jwt-secret")
-	h := NewAuthHandler(authSvc)
+	store := testutil.NewFakeAuthStore()
+	authSvc := service.NewAuthService(store, store, store, "http://localhost:5173", "development")
+	h := NewAuthHandler(authSvc, false)
 
 	body, _ := json.Marshal(map[string]string{
 		"email": "buyer@example.com", "password": "password123",
@@ -29,26 +29,21 @@ func TestAuthRegisterAndMe(t *testing.T) {
 		t.Fatalf("register status %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var registerEnv struct {
-		Data struct {
-			Token string `json:"token"`
-			User  struct {
-				ID    string `json:"id"`
-				Email string `json:"email"`
-			} `json:"user"`
-		} `json:"data"`
+	cookie := rec.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookie {
+		if c.Name == auth.SessionCookieName {
+			sessionCookie = c
+		}
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&registerEnv); err != nil {
-		t.Fatal(err)
-	}
-	if registerEnv.Data.Token == "" || registerEnv.Data.User.Email != "buyer@example.com" {
-		t.Fatalf("data %+v", registerEnv.Data)
+	if sessionCookie == nil || sessionCookie.Value == "" || !sessionCookie.HttpOnly {
+		t.Fatalf("cookies %+v", cookie)
 	}
 
-	meHandler := middleware.RequireUserJWT("test-jwt-secret")(http.HandlerFunc(h.Me))
+	meHandler := middleware.RequireUserSession(store)(http.HandlerFunc(h.Me))
 	meRec := httptest.NewRecorder()
 	meReq := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
-	meReq.Header.Set("Authorization", "Bearer "+registerEnv.Data.Token)
+	meReq.AddCookie(sessionCookie)
 	meHandler.ServeHTTP(meRec, meReq)
 	if meRec.Code != http.StatusOK {
 		t.Fatalf("me status %d body=%s", meRec.Code, meRec.Body.String())
@@ -56,9 +51,9 @@ func TestAuthRegisterAndMe(t *testing.T) {
 }
 
 func TestAuthLogin(t *testing.T) {
-	store := testutil.NewFakeCustomerStore()
-	authSvc := service.NewAuthService(store, "test-jwt-secret")
-	h := NewAuthHandler(authSvc)
+	store := testutil.NewFakeAuthStore()
+	authSvc := service.NewAuthService(store, store, store, "http://localhost:5173", "development")
+	h := NewAuthHandler(authSvc, false)
 
 	registerBody, _ := json.Marshal(map[string]string{
 		"email": "buyer@example.com", "password": "password123",
@@ -82,16 +77,13 @@ func TestAuthLogin(t *testing.T) {
 		t.Fatalf("login status %d body=%s", loginRec.Code, loginRec.Body.String())
 	}
 
-	var loginEnv struct {
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
+	var hasSession bool
+	for _, c := range loginRec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName && c.Value != "" {
+			hasSession = true
+		}
 	}
-	if err := json.NewDecoder(loginRec.Body).Decode(&loginEnv); err != nil {
-		t.Fatal(err)
-	}
-	claims, err := auth.VerifyUserToken("test-jwt-secret", loginEnv.Data.Token)
-	if err != nil || claims.Email != "buyer@example.com" {
-		t.Fatalf("claims %+v err=%v", claims, err)
+	if !hasSession {
+		t.Fatal("expected session cookie")
 	}
 }

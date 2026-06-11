@@ -64,6 +64,9 @@ export function Login() {
       </form>
       {error && <ErrorMessage message={error} />}
       <p>
+        <Link to="/forgot-password">Forgot password?</Link>
+      </p>
+      <p>
         No account? <Link to="/signup">Sign up</Link>
       </p>
       <BackToCatalogLink />

@@ -18,8 +18,10 @@ type RouterDeps struct {
 	Orders   handler.OrderService
 	Webhooks handler.WebhookProcessor
 	Auth     handler.UserAuthenticator
-	CORSOrigin      string
-	AuthJWTSecret   string
+	Sessions middleware.SessionLookup
+	RateLimits middleware.RateLimitCounter
+	CORSOrigin         string
+	SecureCookies      bool
 	MetricsEnabled     bool
 	MetricsAPIKey      string
 	TracingServiceName string
@@ -32,8 +34,15 @@ func NewRouter(deps RouterDeps) http.Handler {
 	checkoutHandler := handler.NewCheckoutHandler(deps.Orders)
 	ordersHandler := handler.NewOrdersHandler(deps.Orders)
 	webhooksHandler := handler.NewWebhooksHandler(deps.Webhooks)
-	authHandler := handler.NewAuthHandler(deps.Auth)
+	authHandler := handler.NewAuthHandler(deps.Auth, deps.SecureCookies)
 	metricsHandler := handler.NewMetricsHandler()
+
+	rateLimit := func(name string, limit int, window time.Duration) func(http.Handler) http.Handler {
+		if deps.RateLimits != nil {
+			return middleware.RateLimitByIPPostgres(deps.RateLimits, name, limit, window)
+		}
+		return middleware.RateLimitByIP(limit, window)
+	}
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
@@ -50,7 +59,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 		AllowedOrigins:   []string{deps.CORSOrigin},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "Traceparent", "Tracestate", "X-API-Key", "X-Order-Token", "X-Request-ID"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
@@ -67,29 +76,46 @@ func NewRouter(deps RouterDeps) http.Handler {
 		r.Get("/api/products", productsHandler.ServeHTTP)
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RateLimitByIP(5, time.Minute))
+			r.Use(rateLimit("auth-register", 5, time.Minute))
 			r.Post("/api/auth/register", authHandler.Register)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RateLimitByIP(10, time.Minute))
+			r.Use(rateLimit("auth-login", 10, time.Minute))
 			r.Post("/api/auth/login", authHandler.Login)
 		})
 
+		r.Post("/api/auth/logout", authHandler.Logout)
+
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RateLimitByIP(20, time.Minute))
+			r.Use(rateLimit("auth-forgot-password", 5, time.Minute))
+			r.Post("/api/auth/forgot-password", authHandler.ForgotPassword)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(rateLimit("auth-reset-password", 10, time.Minute))
+			r.Post("/api/auth/reset-password", authHandler.ResetPassword)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(rateLimit("auth-verify-email", 10, time.Minute))
+			r.Post("/api/auth/verify-email", authHandler.VerifyEmail)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(rateLimit("checkout", 20, time.Minute))
 			r.Post("/api/checkout/sessions", checkoutHandler.ServeHTTP)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RateLimitByIP(120, time.Minute))
+			r.Use(rateLimit("orders-read", 120, time.Minute))
 			r.Get("/api/orders/{id}", ordersHandler.GetByID)
 			r.Get("/api/orders/by-session/{sessionId}", ordersHandler.GetBySession)
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireUserJWT(deps.AuthJWTSecret))
-			r.Use(middleware.RateLimitByIP(60, time.Minute))
+			r.Use(middleware.RequireUserSession(deps.Sessions))
+			r.Use(rateLimit("auth-user", 60, time.Minute))
 			r.Get("/api/auth/me", authHandler.Me)
 			r.Get("/api/orders/mine", ordersHandler.ListMine)
 		})
@@ -97,7 +123,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(120 * time.Second))
-		r.Use(middleware.RateLimitByIP(120, time.Minute))
+		r.Use(rateLimit("webhooks", 120, time.Minute))
 		r.Post("/api/webhooks/stripe", webhooksHandler.ServeHTTP)
 	})
 

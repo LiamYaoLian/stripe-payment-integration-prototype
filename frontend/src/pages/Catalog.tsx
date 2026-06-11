@@ -56,7 +56,7 @@ export function Catalog() {
           <>
             Signed in as <strong>{user.email}</strong>.{' '}
             <Link to="/orders">My orders</Link>{' '}
-            <button type="button" className="btn secondary" onClick={signOut}>
+            <button type="button" className="btn secondary" onClick={() => void signOut()}>
               Sign out
             </button>
           </>

@@ -20,15 +20,17 @@ func newTestRouter(t *testing.T, health testutil.FakeHealth) (*testutil.FakeOrde
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
-	authSvc := service.NewAuthService(testutil.NewFakeCustomerStore(), "test-jwt-secret")
+	authStore := testutil.NewFakeAuthStore()
+	authSvc := service.NewAuthService(authStore, authStore, authStore, "http://localhost:5173", "development")
 	return store, NewRouter(RouterDeps{
 		Health:         health,
 		Products:       products,
 		Orders:         orders,
 		Webhooks:       webhooks,
 		Auth:           authSvc,
+		Sessions:       authStore,
+		RateLimits:     authStore,
 		CORSOrigin:     "http://localhost:5173",
-		AuthJWTSecret:  "test-jwt-secret",
 		MetricsEnabled: false,
 	})
 }
@@ -122,10 +124,12 @@ func TestRouterWebhookCheckoutCompleted(t *testing.T) {
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
-	authSvc := service.NewAuthService(testutil.NewFakeCustomerStore(), "test-jwt-secret")
+	authStore := testutil.NewFakeAuthStore()
+	authSvc := service.NewAuthService(authStore, authStore, authStore, "http://localhost:5173", "development")
 	r := NewRouter(RouterDeps{
 		Health: testutil.FakeHealth{}, Products: products, Orders: orders, Webhooks: webhooks, Auth: authSvc,
-		CORSOrigin: "http://localhost:5173", AuthJWTSecret: "test-jwt-secret", MetricsEnabled: false,
+		Sessions: authStore, RateLimits: authStore,
+		CORSOrigin: "http://localhost:5173", MetricsEnabled: false,
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewReader(payload))

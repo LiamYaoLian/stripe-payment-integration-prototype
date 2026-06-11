@@ -73,10 +73,11 @@ func TestE2EWebhookCheckoutCompleted(t *testing.T) {
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
-	authSvc := service.NewAuthService(store, "e2e-jwt-secret")
+	authSvc := service.NewAuthService(store, store, store, "http://localhost:5173", "development")
 	router := NewRouter(RouterDeps{
 		Health: store, Products: products, Orders: orders, Webhooks: webhooks, Auth: authSvc,
-		CORSOrigin: "http://localhost:5173", AuthJWTSecret: "e2e-jwt-secret", MetricsEnabled: false,
+		Sessions: store, RateLimits: store,
+		CORSOrigin: "http://localhost:5173", MetricsEnabled: false,
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewReader(payload))

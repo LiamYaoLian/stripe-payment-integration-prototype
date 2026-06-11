@@ -7,13 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { getMe, login as apiLogin, register as apiRegister } from '../api/client'
+import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/client'
 import { ApiError } from '../api/client'
-import { clearUserToken, getUserToken, saveUserToken } from '../lib/auth'
 
 export type User = {
   id: string
   email: string
+  emailVerified: boolean
 }
 
 type AuthContextValue = {
@@ -21,7 +21,8 @@ type AuthContextValue = {
   isLoading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<void>
-  signOut: () => void
+  signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -30,15 +31,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    const token = getUserToken()
-    if (!token) {
-      setIsLoading(false)
-      return
+  const refreshUser = useCallback(async () => {
+    try {
+      const profile = await getMe()
+      setUser(profile)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setUser(null)
+        return
+      }
+      throw error
     }
+  }, [])
 
+  useEffect(() => {
     let cancelled = false
-    getMe(token)
+
+    getMe()
       .then((profile) => {
         if (!cancelled) {
           setUser(profile)
@@ -46,10 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         if (!cancelled) {
-          if (error instanceof ApiError && error.status === 401) {
-            clearUserToken()
+          if (!(error instanceof ApiError && error.status === 401)) {
+            setUser(null)
+          } else {
+            setUser(null)
           }
-          setUser(null)
         }
       })
       .finally(() => {
@@ -65,24 +75,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const session = await apiLogin(email, password)
-    saveUserToken(session.token)
     setUser(session.user)
   }, [])
 
   const signUp = useCallback(async (email: string, password: string) => {
     const session = await apiRegister(email, password)
-    saveUserToken(session.token)
     setUser(session.user)
   }, [])
 
-  const signOut = useCallback(() => {
-    clearUserToken()
-    setUser(null)
+  const signOut = useCallback(async () => {
+    try {
+      await apiLogout()
+    } finally {
+      setUser(null)
+    }
   }, [])
 
   const value = useMemo(
-    () => ({ user, isLoading, signIn, signUp, signOut }),
-    [user, isLoading, signIn, signUp, signOut],
+    () => ({ user, isLoading, signIn, signUp, signOut, refreshUser }),
+    [user, isLoading, signIn, signUp, signOut, refreshUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

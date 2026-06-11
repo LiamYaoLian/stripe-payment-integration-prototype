@@ -25,9 +25,13 @@ type WebhookProcessor interface {
 	Handle(ctx context.Context, body []byte, signature string) (service.WebhookOutcome, error)
 }
 
-// UserAuthenticator handles user registration and login.
+// UserAuthenticator handles user registration, login, and account recovery.
 type UserAuthenticator interface {
 	Register(ctx context.Context, email, password string) (*service.UserSessionResult, error)
 	Login(ctx context.Context, email, password string) (*service.UserSessionResult, error)
+	Logout(ctx context.Context, sessionToken string) error
 	GetUser(ctx context.Context, customerID string) (*service.UserProfile, error)
+	RequestPasswordReset(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, token, password string) error
+	VerifyEmail(ctx context.Context, token string) error
 }

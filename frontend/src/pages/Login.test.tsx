@@ -31,14 +31,12 @@ describe('Login', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
-    localStorage.clear()
   })
 
   it('submits credentials and navigates on success', async () => {
     vi.mocked(client.login).mockResolvedValue({
-      token: 'user-jwt',
       expiresAt: '2099-01-01T00:00:00Z',
-      user: { id: 'cust_1', email: 'buyer@example.com' },
+      user: { id: 'cust_1', email: 'buyer@example.com', emailVerified: false },
     })
 
     render(

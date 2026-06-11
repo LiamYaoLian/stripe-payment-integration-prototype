@@ -12,6 +12,7 @@ vi.mock('../api/client', async () => {
     ...actual,
     getMe: vi.fn(),
     listMyOrders: vi.fn(),
+    logout: vi.fn(),
   }
 })
 
@@ -38,16 +39,15 @@ function renderMyOrders() {
 
 describe('MyOrders', () => {
   beforeEach(() => {
-    localStorage.setItem('user-session-token', 'user-jwt')
     vi.mocked(client.getMe).mockResolvedValue({
       id: 'cust_1',
       email: 'buyer@example.com',
+      emailVerified: true,
     })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
-    localStorage.clear()
   })
 
   it('lists orders for a signed-in user', async () => {

@@ -32,7 +32,6 @@ describe('SignUp', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
-    localStorage.clear()
   })
 
   it('shows error when passwords do not match', async () => {
@@ -55,9 +54,8 @@ describe('SignUp', () => {
 
   it('submits registration and navigates on success', async () => {
     vi.mocked(client.register).mockResolvedValue({
-      token: 'user-jwt',
       expiresAt: '2099-01-01T00:00:00Z',
-      user: { id: 'cust_1', email: 'buyer@example.com' },
+      user: { id: 'cust_1', email: 'buyer@example.com', emailVerified: false },
     })
 
     render(

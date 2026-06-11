@@ -47,7 +47,7 @@ export function MyOrders() {
       <h1>My Orders</h1>
       <p>
         Signed in as <strong>{user?.email}</strong>.{' '}
-        <button type="button" className="btn secondary" onClick={signOut}>
+        <button type="button" className="btn secondary" onClick={() => void signOut()}>
           Sign out
         </button>
       </p>

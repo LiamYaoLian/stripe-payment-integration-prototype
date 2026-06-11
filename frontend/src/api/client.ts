@@ -7,15 +7,17 @@ import {
   ApiResponseError,
   authSessionSchema,
   checkoutSessionResultSchema,
+  messageSchema,
   orderSchema,
   parseApiEnvelope,
   productSchema,
   userProfileSchema,
 } from './schemas'
-import { getUserToken } from '../lib/auth'
 import { z } from 'zod'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
+
+const credentials: RequestCredentials = 'include'
 
 export class ApiError extends Error {
   readonly code: string
@@ -33,7 +35,7 @@ export class ApiError extends Error {
 async function request<T>(path: string, dataSchema: z.ZodType<T>, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${API_BASE}${path}`, init)
+    response = await fetch(`${API_BASE}${path}`, { credentials, ...init })
   } catch {
     throw new Error(
       API_BASE
@@ -110,7 +112,7 @@ export async function createCheckoutSession(
 export async function register(
   email: string,
   password: string,
-): Promise<{ token: string; expiresAt: string; user: { id: string; email: string } }> {
+): Promise<{ expiresAt: string; user: { id: string; email: string; emailVerified: boolean } }> {
   return request('/api/auth/register', authSessionSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -121,7 +123,7 @@ export async function register(
 export async function login(
   email: string,
   password: string,
-): Promise<{ token: string; expiresAt: string; user: { id: string; email: string } }> {
+): Promise<{ expiresAt: string; user: { id: string; email: string; emailVerified: boolean } }> {
   return request('/api/auth/login', authSessionSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -129,20 +131,43 @@ export async function login(
   })
 }
 
-export async function getMe(token: string): Promise<{ id: string; email: string }> {
-  return request('/api/auth/me', userProfileSchema, {
-    headers: { Authorization: `Bearer ${token}` },
+export async function logout(): Promise<void> {
+  await request('/api/auth/logout', z.object({ status: z.string() }), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
   })
 }
 
-export async function listMyOrders(token?: string): Promise<Order[]> {
-  const authToken = token ?? getUserToken()
-  if (!authToken) {
-    throw new ApiError(401, 'UNAUTHORIZED', 'not signed in')
-  }
-  const data = await request('/api/orders/mine', z.object({ orders: z.array(orderSchema) }), {
-    headers: { Authorization: `Bearer ${authToken}` },
+export async function getMe(): Promise<{ id: string; email: string; emailVerified: boolean }> {
+  return request('/api/auth/me', userProfileSchema)
+}
+
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return request('/api/auth/forgot-password', messageSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
   })
+}
+
+export async function resetPassword(token: string, password: string): Promise<{ message: string }> {
+  return request('/api/auth/reset-password', messageSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  })
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  return request('/api/auth/verify-email', messageSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+}
+
+export async function listMyOrders(): Promise<Order[]> {
+  const data = await request('/api/orders/mine', z.object({ orders: z.array(orderSchema) }))
   return data.orders
 }
 

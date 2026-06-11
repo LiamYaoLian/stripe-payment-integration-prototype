@@ -162,7 +162,7 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
-| Security | B+ | localStorage Bearer JWT (XSS); no refresh/revocation; per-process rate limits at 2 replicas; no email verify / password reset |
+| Security | A− | httpOnly cookie sessions + server-side revocation; Postgres rate limits; email verify + password reset (dev-log links; no SMTP yet) |
 | Reliability | B+ | Webhook retry/reclaim, probes, PDB, graceful shutdown; no multi-region or distributed limits |
 | Observability | A− | OTLP (Jaeger), log `trace_id`, metrics + Prometheus rules; no frontend trace propagation |
 | Ops | B | CI + release build, `k8s-deploy.sh`, web + ingress manifests, kubeconform; registry push & alert apply still manual |
