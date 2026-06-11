@@ -189,6 +189,7 @@ func (s *Store) ClearOrderIdempotencyKey(ctx context.Context, orderID string) er
 func (s *Store) CancelOrder(ctx context.Context, orderID, reason string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE orders SET status = 'canceled',
+			idempotency_key = NULL,
 			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('cancel_reason', $2::text),
 			updated_at = now()
 		WHERE id = $1`, orderID, reason)

@@ -12,16 +12,17 @@ describe('idempotency helpers', () => {
     vi.unstubAllGlobals()
   })
 
-  it('generates and reuses idempotency key per product', () => {
-    expect(getIdempotencyKey('prod-a')).toBe('test-uuid-1')
-    expect(getIdempotencyKey('prod-a')).toBe('test-uuid-1')
-    expect(getIdempotencyKey('prod-b')).toBe('test-uuid-1')
+  it('generates and reuses idempotency key per product and ui mode', () => {
+    expect(getIdempotencyKey('prod-a', 'hosted')).toBe('test-uuid-1')
+    expect(getIdempotencyKey('prod-a', 'hosted')).toBe('test-uuid-1')
+    expect(getIdempotencyKey('prod-a', 'embedded')).toBe('test-uuid-1')
+    expect(getIdempotencyKey('prod-b', 'hosted')).toBe('test-uuid-1')
   })
 
   it('clears idempotency key', () => {
-    getIdempotencyKey('prod-a')
-    clearIdempotencyKey('prod-a')
-    expect(sessionStorage.getItem('checkout-idempotency-prod-a')).toBeNull()
+    getIdempotencyKey('prod-a', 'hosted')
+    clearIdempotencyKey('prod-a', 'hosted')
+    expect(sessionStorage.getItem('checkout-idempotency-hosted-prod-a')).toBeNull()
   })
 })
 

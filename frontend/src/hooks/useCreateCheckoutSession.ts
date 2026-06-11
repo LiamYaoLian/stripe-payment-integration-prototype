@@ -29,7 +29,7 @@ export function useCreateCheckoutSession(
 
     let cancelled = false
     onBeforeCreate?.(productId)
-    const idempotencyKey = getIdempotencyKey(productId)
+    const idempotencyKey = getIdempotencyKey(productId, uiMode)
 
     createCheckoutSession({ uiMode, items: [{ productId, quantity: 1 }] }, idempotencyKey)
       .then((result) => {

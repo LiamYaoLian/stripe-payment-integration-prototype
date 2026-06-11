@@ -180,6 +180,23 @@ func TestCreateCheckoutSessionIdempotencyRace(t *testing.T) {
 	}
 }
 
+func TestCreateCheckoutSessionCanceledOrderIgnoresHashMismatch(t *testing.T) {
+	store := testutil.NewFakeOrderStore()
+	store.OrdersByIdempotency["idem-canceled-hash"] = &db.Order{
+		ID: "ord-canceled", Status: "canceled",
+		Metadata: mustMetaHash(t, "old-hash"),
+	}
+	store.Orders["ord-canceled"] = store.OrdersByIdempotency["idem-canceled-hash"]
+	svc := newTestOrderService(store, &testutil.FakeStripe{})
+	result, err := svc.CreateCheckoutSession(t.Context(), "idem-canceled-hash", hostedInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SessionID != "cs_test_fake" {
+		t.Fatalf("expected new session after canceled order, got %+v", result)
+	}
+}
+
 func TestCreateCheckoutSessionIdempotencyConflict(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	store.OrdersByIdempotency["idem-conflict"] = &db.Order{

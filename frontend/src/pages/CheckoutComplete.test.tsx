@@ -41,7 +41,7 @@ describe('CheckoutComplete', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    expect(idempotency.clearIdempotencyKey).toHaveBeenCalledWith('prod-embed')
+    expect(idempotency.clearIdempotencyKey).toHaveBeenCalledWith('prod-embed', 'embedded')
     expect(screen.getByText('paid')).toBeInTheDocument()
   })
 

@@ -16,7 +16,7 @@ export function CheckoutComplete() {
   useEffect(() => {
     const productId = sessionStorage.getItem(LAST_EMBEDDED_PRODUCT_ID_KEY)
     if (productId) {
-      clearIdempotencyKey(productId)
+      clearIdempotencyKey(productId, 'embedded')
     }
   }, [])
 

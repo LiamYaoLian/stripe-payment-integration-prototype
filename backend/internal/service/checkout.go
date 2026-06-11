@@ -44,15 +44,15 @@ func (s *OrderService) resolveIdempotency(
 		return nil, nil
 	}
 
-	existingHash := extractRequestHash(existing.Metadata)
-	if existingHash != "" && existingHash != bodyHash {
-		return nil, &api.AppError{Status: 409, Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key reused with different body"}
-	}
 	if existing.Status == domain.OrderStatusCanceled {
 		if err := s.store.ClearOrderIdempotencyKey(ctx, existing.ID); err != nil {
 			return nil, err
 		}
 		return nil, nil
+	}
+	existingHash := extractRequestHash(existing.Metadata)
+	if existingHash != "" && existingHash != bodyHash {
+		return nil, &api.AppError{Status: 409, Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key reused with different body"}
 	}
 	if existing.StripeCheckoutSessionID == nil || *existing.StripeCheckoutSessionID == "" {
 		return nil, &api.AppError{Status: 409, Code: "CHECKOUT_IN_PROGRESS", Message: "checkout session creation in progress"}

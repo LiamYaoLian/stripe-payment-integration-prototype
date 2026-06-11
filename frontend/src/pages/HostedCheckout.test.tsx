@@ -40,7 +40,7 @@ describe('HostedCheckout', () => {
     })
 
     await waitFor(() => {
-      expect(idempotency.clearIdempotencyKey).toHaveBeenCalledWith('p1')
+      expect(idempotency.clearIdempotencyKey).toHaveBeenCalledWith('p1', 'hosted')
     })
     expect(window.location.href).toBe('https://checkout.stripe.com/test')
   })

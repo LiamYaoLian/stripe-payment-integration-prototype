@@ -201,6 +201,10 @@ func (f *FakeOrderStore) CancelOrder(_ context.Context, orderID, reason string) 
 	f.CancelReasons = append(f.CancelReasons, reason)
 	if o := f.Orders[orderID]; o != nil {
 		o.Status = "canceled"
+		if o.IdempotencyKey != nil {
+			delete(f.OrdersByIdempotency, *o.IdempotencyKey)
+			o.IdempotencyKey = nil
+		}
 	}
 	return nil
 }

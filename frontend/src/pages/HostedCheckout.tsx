@@ -14,7 +14,7 @@ export function HostedCheckout() {
     if (!session?.url || !productId) {
       return
     }
-    clearIdempotencyKey(productId)
+    clearIdempotencyKey(productId, 'hosted')
     window.location.href = session.url
   }, [session, productId])
 
