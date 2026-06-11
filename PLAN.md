@@ -36,7 +36,7 @@ sequenceDiagram
     Stripe->>API: webhook checkout.session.completed
     API->>DB: order → paid
 
-    FE->>API: GET /api/orders/by-session/:id + X-Order-Token
+    FE->>API: GET /api/orders/by-session/:id + X-Order-Token (accessToken)
     API-->>FE: status paid
 ```
 
