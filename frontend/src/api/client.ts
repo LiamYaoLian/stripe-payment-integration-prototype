@@ -17,7 +17,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init)
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, init)
+  } catch {
+    throw new Error(
+      API_BASE
+        ? `Cannot reach API at ${API_BASE} — is the backend running on :8080?`
+        : 'Cannot reach API — is the backend running? (make dev)',
+    )
+  }
   const body = (await res.json()) as ApiEnvelope<T>
   if (body.error) {
     throw new ApiError(res.status, body.error.code, body.error.message)
