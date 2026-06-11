@@ -106,7 +106,28 @@ Both flows poll order status via `GET /api/orders/by-session/:sessionId` after p
 | `make seed` | Insert sample products |
 | `make run` | Start Go API only (`:8080`) |
 | `make dev` | Start API + Vite (`:5173`) |
-| `make test` | Run Go tests |
+| `make test` | Unit tests (Go `-short` + frontend Vitest) |
+| `make test-integration` | DB integration tests (requires Postgres on `:5434`) |
+| `make test-frontend` | Frontend Vitest only |
+| `make test-all` | All Go tests + frontend (includes integration) |
+
+## Testing
+
+```bash
+# Fast unit tests (default — no Postgres required)
+make test
+
+# DB integration tests (docker compose up -d first)
+make test-integration
+
+# Everything
+make test-all
+```
+
+**Structure**
+- **Go unit tests** — service/handler logic with fakes in `internal/testutil`
+- **Go integration tests** — `internal/db` against Postgres; skipped with `-short`
+- **Frontend tests** — Vitest + Testing Library (`frontend/src/**/*.test.ts(x)`)
 
 ## Project layout
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/stripeclient"
 	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
 )
@@ -37,13 +36,30 @@ type CheckoutResult struct {
 	ClientSecret string `json:"clientSecret,omitempty"`
 }
 
+type orderStore interface {
+	ListActiveProducts(ctx context.Context) ([]db.Product, error)
+	GetOrderByID(ctx context.Context, id string) (*db.Order, error)
+	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
+	GetOrderByIdempotencyKey(ctx context.Context, key string) (*db.Order, error)
+	ClearOrderIdempotencyKey(ctx context.Context, orderID string) error
+	GetProduct(ctx context.Context, id string) (*db.Product, error)
+	CreateOrderWithItems(ctx context.Context, order db.CreateOrderParams, items []db.CreateOrderItemParams) error
+	UpdateOrderSession(ctx context.Context, orderID, sessionID, checkoutURL, clientSecret string) error
+	CancelOrder(ctx context.Context, orderID, reason string) error
+}
+
+type checkoutStripeClient interface {
+	CreateCheckoutSession(params *stripe.CheckoutSessionParams) (*stripe.CheckoutSession, error)
+	ExpireCheckoutSession(sessionID string) error
+}
+
 type OrderService struct {
-	store  *db.Store
-	stripe *stripeclient.Client
+	store  orderStore
+	stripe checkoutStripeClient
 	front  string
 }
 
-func NewOrderService(store *db.Store, stripe *stripeclient.Client, frontendURL string) *OrderService {
+func NewOrderService(store orderStore, stripe checkoutStripeClient, frontendURL string) *OrderService {
 	return &OrderService{store: store, stripe: stripe, front: strings.TrimRight(frontendURL, "/")}
 }
 

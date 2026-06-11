@@ -2,6 +2,7 @@
   "id": "evt_test_completed",
   "object": "event",
   "type": "checkout.session.completed",
+  "api_version": "2026-05-27.dahlia",
   "data": {
     "object": {
       "id": "cs_test_completed",

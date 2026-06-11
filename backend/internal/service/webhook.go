@@ -19,12 +19,22 @@ var handledEvents = map[stripe.EventType]bool{
 	"checkout.session.expired":               true,
 }
 
+type webhookStore interface {
+	GetWebhookEvent(ctx context.Context, stripeEventID string) (*db.WebhookEvent, error)
+	InsertWebhookEvent(ctx context.Context, e db.WebhookEvent) error
+	MarkWebhookIgnored(ctx context.Context, stripeEventID string) error
+	ClaimWebhookEvent(ctx context.Context, stripeEventID string) (bool, error)
+	FailWebhookEvent(ctx context.Context, stripeEventID string) error
+	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
+	UpdateOrderStatusIfAllowed(ctx context.Context, orderID, newStatus string, paymentIntentID *string, paidAt *time.Time, allowedFrom []string) (bool, error)
+}
+
 type WebhookService struct {
-	store         *db.Store
+	store         webhookStore
 	webhookSecret string
 }
 
-func NewWebhookService(store *db.Store, webhookSecret string) *WebhookService {
+func NewWebhookService(store webhookStore, webhookSecret string) *WebhookService {
 	return &WebhookService{store: store, webhookSecret: webhookSecret}
 }
 

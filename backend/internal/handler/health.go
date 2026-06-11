@@ -1,14 +1,19 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 )
 
+type healthStore interface {
+	Ping(ctx context.Context) error
+}
+
 type HealthHandler struct {
-	store *db.Store
+	store healthStore
 }
 
 func NewHealthHandler(store *db.Store) *HealthHandler {

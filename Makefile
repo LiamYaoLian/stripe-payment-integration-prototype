@@ -1,4 +1,4 @@
-.PHONY: migrate seed run dev test sqlc
+.PHONY: migrate seed run dev test test-integration test-frontend test-all sqlc
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -26,7 +26,18 @@ dev:
 	wait
 
 test:
+	cd backend && go test -short ./...
+	cd frontend && npm test
+
+test-integration:
+	cd backend && go test ./internal/db/...
+
+test-frontend:
+	cd frontend && npm test
+
+test-all:
 	cd backend && go test ./...
+	cd frontend && npm test
 
 sqlc:
 	cd backend && sqlc generate

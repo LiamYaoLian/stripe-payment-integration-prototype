@@ -1,0 +1,12 @@
+{
+  "id": "evt_test_charge",
+  "object": "event",
+  "type": "charge.succeeded",
+  "api_version": "2026-05-27.dahlia",
+  "data": {
+    "object": {
+      "id": "ch_test_123",
+      "object": "charge"
+    }
+  }
+}
