@@ -266,6 +266,53 @@ func TestIntegrationOrderStatusTransitions(t *testing.T) {
 	}
 }
 
+func TestIntegrationCompleteWebhookRefund(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+	ctx := context.Background()
+
+	orderID := xid.New().String()
+	eventID := "evt_refund_" + xid.New().String()
+	pi := "pi_refund_" + xid.New().String()
+	t.Cleanup(func() {
+		deleteTestWebhookEvent(ctx, store, eventID)
+		deleteTestOrder(ctx, store, orderID)
+	})
+
+	err := store.CreateOrderWithItems(ctx, CreateOrderParams{
+		ID: orderID, OrderNumber: "ORD-REF-" + xid.New().String()[:6],
+		TotalAmountCents: 1000, Currency: "usd", UIMode: "hosted", RequestBodyHash: "refund",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, err := store.UpdateOrderStatusIfAllowed(ctx, orderID, "paid", &pi, &now, []string{"pending"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.InsertWebhookEvent(ctx, WebhookEvent{
+		ID: xid.New().String(), StripeEventID: eventID, EventType: "charge.refunded",
+		ProcessingStatus: "received", Payload: json.RawMessage(`{"id":"`+eventID+`"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := store.ClaimWebhookEvent(ctx, eventID)
+	if err != nil || !claimed {
+		t.Fatalf("claimed=%v err=%v", claimed, err)
+	}
+	if err := store.CompleteWebhookProcessing(ctx, WebhookCompletion{
+		StripeEventID: eventID, OrderID: &orderID, RefundOnly: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	order, err := store.GetOrderByID(ctx, orderID)
+	if err != nil || order.Status != "refunded" {
+		t.Fatalf("order status %q err=%v", order.Status, err)
+	}
+}
+
 func TestIntegrationCompleteWebhookProcessing(t *testing.T) {
 	store := openTestStore(t)
 	defer store.Close()

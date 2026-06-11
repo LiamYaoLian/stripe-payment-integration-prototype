@@ -57,7 +57,7 @@ func TestPaymentIntentID(t *testing.T) {
 }
 
 func TestWebhookHandleInvalidSignature(t *testing.T) {
-	svc := NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), []byte(`{}`), "bad-sig")
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeInvalidSignature)
 }
@@ -68,7 +68,7 @@ func TestWebhookHandleIgnoredEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := testutil.NewFakeWebhookStore()
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.Ignored) != 1 {
@@ -85,7 +85,7 @@ func TestWebhookHandleAlreadyProcessed(t *testing.T) {
 	store.Events["evt_test_charge"] = &db.WebhookEvent{
 		StripeEventID: "evt_test_charge", ProcessingStatus: "processed",
 	}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 }
@@ -99,7 +99,7 @@ func TestWebhookHandleProcessingInFlight(t *testing.T) {
 	store.Events["evt_test_charge"] = &db.WebhookEvent{
 		StripeEventID: "evt_test_charge", ProcessingStatus: "processing",
 	}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
 }
@@ -113,7 +113,7 @@ func TestWebhookHandleInFlight(t *testing.T) {
 	store.Events["evt_test_charge"] = &db.WebhookEvent{
 		StripeEventID: "evt_test_charge", ProcessingStatus: "received",
 	}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
 }
@@ -125,7 +125,7 @@ func TestWebhookHandleCheckoutCompletedPaid(t *testing.T) {
 	}
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord1:paid" {
@@ -143,7 +143,7 @@ func TestWebhookHandleSessionExpired(t *testing.T) {
 	}`)
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_expired"] = &db.Order{ID: "ord2", Status: "pending"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord2:expired" {
@@ -166,7 +166,7 @@ func TestWebhookHandleCheckoutCompletedIncompleteSession(t *testing.T) {
 	}`)
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_open"] = &db.Order{ID: "ord-open", Status: "pending"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 0 {
@@ -190,7 +190,7 @@ func TestWebhookHandleCheckoutCompletedProcessing(t *testing.T) {
 	}`)
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_processing"] = &db.Order{ID: "ord4", Status: "pending"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord4:processing" {
@@ -213,7 +213,7 @@ func TestWebhookHandleAsyncSucceeded(t *testing.T) {
 	}`)
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_async"] = &db.Order{ID: "ord_async", Status: "processing"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord_async:paid" {
@@ -231,7 +231,7 @@ func TestWebhookHandleClaimRaceReturns503(t *testing.T) {
 		StripeEventID: "evt_test_completed", ProcessingStatus: "received",
 	}
 	store.ClaimOK = false
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
 }
@@ -244,7 +244,7 @@ func TestWebhookHandleProcessErrorReturns500(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
 	store.UpdateErr = errors.New("db update failed")
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
@@ -259,7 +259,7 @@ func TestWebhookHandleFailedEventRetryReturns500(t *testing.T) {
 		StripeEventID: "evt_test_completed", ProcessingStatus: "failed",
 	}
 	store.ClaimOK = false
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
@@ -270,7 +270,7 @@ func TestWebhookHandleMissingOrderReturnsFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := testutil.NewFakeWebhookStore()
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
@@ -282,7 +282,7 @@ func TestWebhookHandleStoreErrorReturnsRetryWithoutGoError(t *testing.T) {
 	}
 	store := testutil.NewFakeWebhookStore()
 	store.GetWebhookEventErr = errors.New("db down")
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, goErr := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, goErr, WebhookOutcomeRetryLater)
 }
@@ -297,10 +297,26 @@ func TestWebhookHandleAsyncPaymentFailed(t *testing.T) {
 	}`)
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_failed"] = &db.Order{ID: "ord3", Status: "processing"}
-	svc := NewWebhookService(store, testutil.TestWebhookSecret, true)
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord3:failed" {
+		t.Fatalf("updates %v", store.StatusUpdate)
+	}
+}
+
+func TestWebhookHandleChargeRefunded(t *testing.T) {
+	raw, err := os.ReadFile("../handler/testdata/charge.refunded.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := testutil.NewFakeWebhookStore()
+	pi := "pi_test_refund"
+	store.Orders["cs_paid"] = &db.Order{ID: "ord-refund", Status: "paid", StripePaymentIntentID: &pi}
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
+	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord-refund:refunded" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}
 }

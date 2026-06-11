@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stripe-payment-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stripe-payment-api
+  template:
+    metadata:
+      labels:
+        app: stripe-payment-api
+    spec:
+      containers:
+        - name: api
+          image: stripe-payment-api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ENV
+              value: production
+            - name: PORT
+              value: "8080"
+            - name: STRIPE_API_VERSION
+              value: "2026-05-27.dahlia"
+            - name: METRICS_ENABLED
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: stripe-payment-secrets
+            - configMapRef:
+                name: stripe-payment-config
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            periodSeconds: 20

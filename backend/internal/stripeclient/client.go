@@ -14,7 +14,8 @@ type Client struct {
 }
 
 // New returns a Stripe client configured with the given secret key.
-func New(apiKey string) *Client {
+// apiVersion is logged at startup and enforced on webhook verification in production.
+func New(apiKey, _ string) *Client {
 	return &Client{apiKey: apiKey}
 }
 

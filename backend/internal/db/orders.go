@@ -21,6 +21,46 @@ func (s *Store) GetOrderBySessionID(ctx context.Context, sessionID string) (*Ord
 		FROM orders WHERE stripe_checkout_session_id = $1`, sessionID)
 }
 
+// GetOrderByPaymentIntentID returns an order by Stripe payment intent ID.
+func (s *Store) GetOrderByPaymentIntentID(ctx context.Context, paymentIntentID string) (*Order, error) {
+	return s.scanOrder(ctx, `
+		SELECT `+orderSelectColumns+`
+		FROM orders WHERE stripe_payment_intent_id = $1`, paymentIntentID)
+}
+
+// ListOrdersByCustomerEmail returns recent orders for a guest email.
+func (s *Store) ListOrdersByCustomerEmail(ctx context.Context, email string, limit int) ([]Order, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+orderSelectColumns+`
+		FROM orders
+		WHERE lower(customer_email) = lower($1)
+		ORDER BY created_at DESC
+		LIMIT $2`, email, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []Order
+	for rows.Next() {
+		var order Order
+		if err := rows.Scan(
+			&order.ID, &order.OrderNumber, &order.IdempotencyKey, &order.Status, &order.TotalAmountCents, &order.Currency,
+			&order.CustomerEmail, &order.StripeCheckoutSessionID, &order.StripePaymentIntentID,
+			&order.StripeCheckoutURL, &order.StripeClientSecret, &order.UIMode,
+			&order.SuccessURL, &order.CancelURL, &order.ReturnURL, &order.Metadata, &order.PaidAt, &order.CreatedAt, &order.UpdatedAt,
+			&order.AccessTokenHash,
+		); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+	return orders, rows.Err()
+}
+
 // GetOrderByIdempotencyKey returns an order by idempotency key.
 func (s *Store) GetOrderByIdempotencyKey(ctx context.Context, key string) (*Order, error) {
 	return s.scanOrder(ctx, `

@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stripe-payment-migrate
+  labels:
+    app: stripe-payment
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: migrate/migrate:v4.18.2
+          args:
+            - -path=/migrations
+            - -database=$(DATABASE_URL)
+            - up
+          envFrom:
+            - secretRef:
+                name: stripe-payment-secrets
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+      volumes:
+        - name: migrations
+          configMap:
+            name: stripe-payment-migrations

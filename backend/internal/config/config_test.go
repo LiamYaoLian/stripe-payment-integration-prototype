@@ -12,6 +12,8 @@ func TestProductionValidationRejectsInsecureDefaults(t *testing.T) {
 	t.Setenv("CORS_ORIGIN", "http://localhost:5173")
 	t.Setenv("APP_FRONTEND_URL", "http://localhost:5173")
 	t.Setenv("DATABASE_URL", "postgresql://u:p@db:5432/app?sslmode=disable")
+	t.Setenv("AUTH_JWT_SECRET", "short")
+	t.Setenv("METRICS_API_KEY", "")
 
 	_, err := Load()
 	if err == nil {

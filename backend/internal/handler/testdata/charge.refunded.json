@@ -1,0 +1,14 @@
+{
+  "id": "evt_test_refunded",
+  "object": "event",
+  "type": "charge.refunded",
+  "api_version": "2026-05-27.dahlia",
+  "data": {
+    "object": {
+      "id": "ch_test_refunded",
+      "object": "charge",
+      "refunded": true,
+      "payment_intent": "pi_test_refund"
+    }
+  }
+}

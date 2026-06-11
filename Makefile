@@ -1,4 +1,4 @@
-.PHONY: migrate seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend
+.PHONY: migrate migrate-release seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -10,6 +10,9 @@ migrate:
 
 migrate-down:
 	$(MIGRATE) -path=/migrations -database "$(MIGRATE_DATABASE_URL)" down 1
+
+migrate-release:
+	DATABASE_URL="$(DATABASE_URL)" ./scripts/migrate-release.sh
 
 seed:
 	cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/seed

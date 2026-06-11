@@ -8,6 +8,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const defaultStripeAPIVersion = "2026-05-27.dahlia"
+
 // Config holds application configuration loaded from environment variables.
 type Config struct {
 	Env                            string
@@ -16,7 +18,11 @@ type Config struct {
 	AppFrontendURL                 string
 	StripeSecretKey                string
 	StripeWebhookSecret            string
+	StripeAPIVersion               string
 	DatabaseURL                    string
+	AuthJWTSecret                  string
+	MetricsEnabled                 bool
+	MetricsAPIKey                  string
 	IgnoreStripeAPIVersionMismatch bool
 }
 
@@ -34,7 +40,11 @@ func Load() (*Config, error) {
 		AppFrontendURL:                 getEnv("APP_FRONTEND_URL", "http://localhost:5173"),
 		StripeSecretKey:                os.Getenv("STRIPE_SECRET_KEY"),
 		StripeWebhookSecret:            os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		StripeAPIVersion:               getEnv("STRIPE_API_VERSION", defaultStripeAPIVersion),
 		DatabaseURL:                    getEnv("DATABASE_URL", "postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable"),
+		AuthJWTSecret:                  os.Getenv("AUTH_JWT_SECRET"),
+		MetricsEnabled:                 getEnv("METRICS_ENABLED", "true") == "true",
+		MetricsAPIKey:                  os.Getenv("METRICS_API_KEY"),
 		IgnoreStripeAPIVersionMismatch: env != "production",
 	}
 
@@ -43,6 +53,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.StripeWebhookSecret == "" {
 		return nil, fmt.Errorf("STRIPE_WEBHOOK_SECRET is required")
+	}
+	if cfg.AuthJWTSecret == "" && env == "development" {
+		cfg.AuthJWTSecret = "dev-only-change-me"
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -66,6 +79,12 @@ func (c *Config) validate() error {
 	}
 	if strings.HasPrefix(c.StripeSecretKey, "sk_test_") {
 		return fmt.Errorf("STRIPE_SECRET_KEY must be a live key when ENV=production")
+	}
+	if c.AuthJWTSecret == "" || c.AuthJWTSecret == "dev-only-change-me" {
+		return fmt.Errorf("AUTH_JWT_SECRET must be set to a strong secret when ENV=production")
+	}
+	if c.MetricsEnabled && c.MetricsAPIKey == "" {
+		return fmt.Errorf("METRICS_API_KEY is required when METRICS_ENABLED=true in production")
 	}
 	return nil
 }

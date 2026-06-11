@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -48,4 +49,22 @@ func (h *OrdersHandler) GetBySession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	api.WriteJSON(w, http.StatusOK, api.NewOrderResponse(order))
+}
+
+func (h *OrdersHandler) ListMine(w http.ResponseWriter, r *http.Request) {
+	email, ok := auth.GuestEmailFromContext(r.Context())
+	if !ok {
+		api.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "guest session required")
+		return
+	}
+	orders, err := h.orders.ListOrdersForGuest(r.Context(), email)
+	if err != nil {
+		writeServiceError(w, r, err)
+		return
+	}
+	responses := make([]api.OrderResponse, 0, len(orders))
+	for i := range orders {
+		responses = append(responses, api.NewOrderResponse(&orders[i]))
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]any{"orders": responses})
 }

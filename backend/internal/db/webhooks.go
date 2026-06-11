@@ -19,6 +19,7 @@ type WebhookCompletion struct {
 	PaymentIntentID *string
 	PaidAt          *time.Time
 	AllowedFrom     []string
+	RefundOnly      bool
 }
 
 // GetWebhookEvent returns a webhook event by Stripe event ID.
@@ -76,7 +77,17 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 	}
 	defer tx.Rollback(ctx)
 
-	if completion.NewStatus != "" && completion.OrderID != nil {
+	switch {
+	case completion.RefundOnly && completion.OrderID != nil:
+		_, err := tx.Exec(ctx, `
+			UPDATE orders SET status = $2::order_status, updated_at = now()
+			WHERE id = $1 AND status = 'paid'::order_status`,
+			*completion.OrderID, domain.OrderStatusRefunded,
+		)
+		if err != nil {
+			return err
+		}
+	case completion.NewStatus != "" && completion.OrderID != nil:
 		_, err := tx.Exec(ctx, `
 			UPDATE orders SET status = $2::order_status,
 				stripe_payment_intent_id = COALESCE($3, stripe_payment_intent_id),

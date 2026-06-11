@@ -93,3 +93,8 @@ jobs:
         env:
           DATABASE_URL: postgresql://stripe:stripe@localhost:5432/stripe_payment?sslmode=disable
         run: cd backend && go test ./internal/db/...
+
+      - name: E2E webhook test
+        env:
+          DATABASE_URL: postgresql://stripe:stripe@localhost:5432/stripe_payment?sslmode=disable
+        run: cd backend && go test ./internal/server/ -run TestE2EWebhookCheckoutCompleted

@@ -34,17 +34,27 @@ func main() {
 
 	go runStaleOrderCleanup(store)
 
-	stripe := stripeclient.New(cfg.StripeSecretKey)
+	stripe := stripeclient.New(cfg.StripeSecretKey, cfg.StripeAPIVersion)
 	productSvc := service.NewProductService(store)
 	orderSvc := service.NewOrderService(store, stripe, cfg.AppFrontendURL)
-	webhookSvc := service.NewWebhookService(store, cfg.StripeWebhookSecret, cfg.IgnoreStripeAPIVersionMismatch)
+	webhookSvc := service.NewWebhookService(
+		store,
+		cfg.StripeWebhookSecret,
+		cfg.IgnoreStripeAPIVersionMismatch,
+		cfg.StripeAPIVersion,
+	)
+	authSvc := service.NewAuthService(cfg.AuthJWTSecret)
 
 	r := server.NewRouter(server.RouterDeps{
-		Health:     store,
-		Products:   productSvc,
-		Orders:     orderSvc,
-		Webhooks:   webhookSvc,
-		CORSOrigin: cfg.CORSOrigin,
+		Health:         store,
+		Products:       productSvc,
+		Orders:         orderSvc,
+		Webhooks:       webhookSvc,
+		Auth:           authSvc,
+		CORSOrigin:     cfg.CORSOrigin,
+		AuthJWTSecret:  cfg.AuthJWTSecret,
+		MetricsEnabled: cfg.MetricsEnabled,
+		MetricsAPIKey:  cfg.MetricsAPIKey,
 	})
 
 	srv := &http.Server{
@@ -57,7 +67,12 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("server starting", "port", cfg.Port, "env", cfg.Env)
+		slog.Info("server starting",
+			"port", cfg.Port,
+			"env", cfg.Env,
+			"stripe_api_version", cfg.StripeAPIVersion,
+			"metrics_enabled", cfg.MetricsEnabled,
+		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server failed", "error", err)
 			os.Exit(1)

@@ -72,7 +72,9 @@ func (f *FakeWebhookStore) CompleteWebhookProcessing(_ context.Context, completi
 	if f.UpdateErr != nil {
 		return f.UpdateErr
 	}
-	if completion.NewStatus != "" && completion.OrderID != nil {
+	if completion.RefundOnly && completion.OrderID != nil {
+		f.StatusUpdate = append(f.StatusUpdate, *completion.OrderID+":refunded")
+	} else if completion.NewStatus != "" && completion.OrderID != nil {
 		f.StatusUpdate = append(f.StatusUpdate, *completion.OrderID+":"+completion.NewStatus)
 	}
 	if event, ok := f.Events[completion.StripeEventID]; ok {
@@ -92,6 +94,15 @@ func (f *FakeWebhookStore) FailWebhookEvent(_ context.Context, stripeEventID str
 func (f *FakeWebhookStore) GetOrderBySessionID(_ context.Context, sessionID string) (*db.Order, error) {
 	if order, ok := f.Orders[sessionID]; ok {
 		return order, nil
+	}
+	return nil, nil
+}
+
+func (f *FakeWebhookStore) GetOrderByPaymentIntentID(_ context.Context, paymentIntentID string) (*db.Order, error) {
+	for _, order := range f.Orders {
+		if order.StripePaymentIntentID != nil && *order.StripePaymentIntentID == paymentIntentID {
+			return order, nil
+		}
 	}
 	return nil, nil
 }

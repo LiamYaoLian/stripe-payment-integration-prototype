@@ -21,6 +21,7 @@ var handledEvents = map[stripe.EventType]bool{
 	"checkout.session.async_payment_succeeded": true,
 	"checkout.session.async_payment_failed":    true,
 	"checkout.session.expired":                 true,
+	"charge.refunded":                          true,
 }
 
 type webhookStore interface {
@@ -31,21 +32,24 @@ type webhookStore interface {
 	CompleteWebhookProcessing(ctx context.Context, completion db.WebhookCompletion) error
 	FailWebhookEvent(ctx context.Context, stripeEventID string) error
 	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
+	GetOrderByPaymentIntentID(ctx context.Context, paymentIntentID string) (*db.Order, error)
 }
 
 // WebhookService processes Stripe webhook events.
 type WebhookService struct {
-	store                         webhookStore
-	webhookSecret                 string
+	store                          webhookStore
+	webhookSecret                  string
 	ignoreStripeAPIVersionMismatch bool
+	expectedStripeAPIVersion       string
 }
 
 // NewWebhookService returns a WebhookService backed by the given store.
-func NewWebhookService(store webhookStore, webhookSecret string, ignoreStripeAPIVersionMismatch bool) *WebhookService {
+func NewWebhookService(store webhookStore, webhookSecret string, ignoreStripeAPIVersionMismatch bool, expectedStripeAPIVersion string) *WebhookService {
 	return &WebhookService{
-		store:                         store,
-		webhookSecret:                 webhookSecret,
+		store:                          store,
+		webhookSecret:                  webhookSecret,
 		ignoreStripeAPIVersionMismatch: ignoreStripeAPIVersionMismatch,
+		expectedStripeAPIVersion:       expectedStripeAPIVersion,
 	}
 }
 
@@ -58,6 +62,13 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 	if err != nil {
 		slog.Warn("webhook signature verification failed", "error", err)
 		return WebhookOutcomeInvalidSignature, nil
+	}
+	if s.expectedStripeAPIVersion != "" && event.APIVersion != "" && event.APIVersion != s.expectedStripeAPIVersion {
+		slog.Warn("stripe webhook api_version mismatch",
+			"expected", s.expectedStripeAPIVersion,
+			"received", event.APIVersion,
+			"event_id", event.ID,
+		)
 	}
 
 	existing, err := s.store.GetWebhookEvent(ctx, event.ID)
@@ -178,9 +189,57 @@ func (s *WebhookService) buildCompletion(ctx context.Context, event stripe.Event
 		return s.completionAsyncFailed(ctx, event, completion)
 	case "checkout.session.expired":
 		return s.completionSessionExpired(ctx, event, completion)
+	case "charge.refunded":
+		return s.completionChargeRefunded(ctx, event, completion)
 	default:
 		return completion, nil
 	}
+}
+
+func parseCharge(event stripe.Event) (*stripe.Charge, error) {
+	var charge stripe.Charge
+	if err := json.Unmarshal(event.Data.Raw, &charge); err != nil {
+		return nil, err
+	}
+	return &charge, nil
+}
+
+func chargePaymentIntentID(charge *stripe.Charge) string {
+	if charge.PaymentIntent == nil {
+		return ""
+	}
+	return charge.PaymentIntent.ID
+}
+
+func (s *WebhookService) completionChargeRefunded(ctx context.Context, event stripe.Event, completion db.WebhookCompletion) (db.WebhookCompletion, error) {
+	charge, err := parseCharge(event)
+	if err != nil {
+		return completion, err
+	}
+	if !charge.Refunded {
+		return completion, nil
+	}
+	paymentIntentID := chargePaymentIntentID(charge)
+	if paymentIntentID == "" {
+		return completion, fmt.Errorf("charge missing payment_intent")
+	}
+	rawOrder, lookupErr := s.store.GetOrderByPaymentIntentID(ctx, paymentIntentID)
+	if lookupErr != nil {
+		return completion, lookupErr
+	}
+	if rawOrder == nil {
+		return completion, fmt.Errorf("order not found for payment_intent: %s", paymentIntentID)
+	}
+	if rawOrder.Status == domain.OrderStatusRefunded {
+		completion.OrderID = &rawOrder.ID
+		return completion, nil
+	}
+	if rawOrder.Status != domain.OrderStatusPaid {
+		return completion, fmt.Errorf("order %s not refundable from status %s", rawOrder.ID, rawOrder.Status)
+	}
+	completion.OrderID = &rawOrder.ID
+	completion.RefundOnly = true
+	return completion, nil
 }
 
 func parseSession(event stripe.Event) (*stripe.CheckoutSession, error) {

@@ -19,13 +19,17 @@ func newTestRouter(t *testing.T, health testutil.FakeHealth) (*testutil.FakeOrde
 	store.Products["p1"] = db.Product{ID: "p1", Name: "Pro", UnitAmountCents: 4900, Currency: "usd", Active: true}
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
-	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true)
+	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
+	authSvc := service.NewAuthService("test-jwt-secret")
 	return store, NewRouter(RouterDeps{
-		Health:     health,
-		Products:   products,
-		Orders:     orders,
-		Webhooks:   webhooks,
-		CORSOrigin: "http://localhost:5173",
+		Health:         health,
+		Products:       products,
+		Orders:         orders,
+		Webhooks:       webhooks,
+		Auth:           authSvc,
+		CORSOrigin:     "http://localhost:5173",
+		AuthJWTSecret:  "test-jwt-secret",
+		MetricsEnabled: false,
 	})
 }
 
@@ -117,10 +121,11 @@ func TestRouterWebhookCheckoutCompleted(t *testing.T) {
 	whStore.Orders["cs_test_completed"] = &db.Order{ID: "ord-wh", Status: "pending"}
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
-	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true)
+	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
+	authSvc := service.NewAuthService("test-jwt-secret")
 	r := NewRouter(RouterDeps{
-		Health: testutil.FakeHealth{}, Products: products, Orders: orders, Webhooks: webhooks,
-		CORSOrigin: "http://localhost:5173",
+		Health: testutil.FakeHealth{}, Products: products, Orders: orders, Webhooks: webhooks, Auth: authSvc,
+		CORSOrigin: "http://localhost:5173", AuthJWTSecret: "test-jwt-secret", MetricsEnabled: false,
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewReader(payload))

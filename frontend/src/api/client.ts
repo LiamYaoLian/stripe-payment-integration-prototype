@@ -104,6 +104,25 @@ export async function createCheckoutSession(
   throw new Error('checkout failed')
 }
 
+export async function createGuestSession(email: string): Promise<{ token: string; expiresAt: string; role: string }> {
+  return request('/api/auth/session', z.object({
+    token: z.string(),
+    expiresAt: z.string(),
+    role: z.string(),
+  }), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function listMyOrders(guestToken: string): Promise<Order[]> {
+  const data = await request('/api/orders/mine', z.object({ orders: z.array(orderSchema) }), {
+    headers: { Authorization: `Bearer ${guestToken}` },
+  })
+  return data.orders
+}
+
 export async function getOrderBySession(sessionId: string, accessToken?: string | null): Promise<Order> {
   const headers: Record<string, string> = {}
   if (accessToken) {

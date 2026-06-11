@@ -42,6 +42,10 @@ services:
       APP_FRONTEND_URL: http://localhost:8081
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET}
+      STRIPE_API_VERSION: "2026-05-27.dahlia"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-only-change-me}
+      METRICS_ENABLED: "true"
+      METRICS_API_KEY: ${METRICS_API_KEY:-dev-metrics-key}
     depends_on:
       migrate:
         condition: service_completed_successfully

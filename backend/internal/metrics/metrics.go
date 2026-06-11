@@ -1,0 +1,23 @@
+package metrics
+
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	HTTPRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total HTTP requests processed",
+	}, []string{"method", "path", "status"})
+
+	WebhookEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "stripe_webhook_events_total",
+		Help: "Stripe webhook processing outcomes",
+	}, []string{"event_type", "outcome"})
+
+	CheckoutSessionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "checkout_sessions_total",
+		Help: "Checkout session creation outcomes",
+	}, []string{"outcome"})
+)

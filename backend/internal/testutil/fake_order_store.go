@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 )
@@ -146,6 +147,22 @@ func (f *FakeOrderStore) UpdateOrderSession(_ context.Context, orderID, sessionI
 	}
 	f.OrdersBySession[sessionID] = o
 	return nil
+}
+
+func (f *FakeOrderStore) ListOrdersByCustomerEmail(_ context.Context, email string, limit int) ([]db.Order, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	var orders []db.Order
+	for _, order := range f.Orders {
+		if order.CustomerEmail != nil && strings.EqualFold(*order.CustomerEmail, email) {
+			orders = append(orders, *order)
+		}
+	}
+	if len(orders) > limit {
+		orders = orders[:limit]
+	}
+	return orders, nil
 }
 
 func (f *FakeOrderStore) CancelOrder(_ context.Context, orderID, reason string) error {

@@ -11,7 +11,7 @@ func TestClientRestoresGlobalAPIKey(t *testing.T) {
 	stripe.Key = "sk_test_previous"
 	t.Cleanup(func() { stripe.Key = previous })
 
-	client := New("sk_test_example")
+	client := New("sk_test_example", "2026-05-27.dahlia")
 	_ = client.ExpireCheckoutSession("cs_invalid")
 
 	if stripe.Key != "sk_test_previous" {

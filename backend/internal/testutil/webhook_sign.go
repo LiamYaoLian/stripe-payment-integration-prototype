@@ -6,7 +6,10 @@ import (
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
-const TestWebhookSecret = "whsec_test_secret"
+const (
+	TestWebhookSecret    = "whsec_test_secret"
+	TestStripeAPIVersion = "2026-05-27.dahlia"
+)
 
 func SignWebhookPayload(t *testing.T, payload []byte, secret string) string {
 	t.Helper()

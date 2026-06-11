@@ -45,6 +45,7 @@ type CheckoutResult struct {
 type orderStore interface {
 	GetOrderByID(ctx context.Context, id string) (*db.Order, error)
 	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
+	ListOrdersByCustomerEmail(ctx context.Context, email string, limit int) ([]db.Order, error)
 	GetOrderByIdempotencyKey(ctx context.Context, key string) (*db.Order, error)
 	ClearOrderIdempotencyKey(ctx context.Context, orderID string) error
 	GetProduct(ctx context.Context, id string) (*db.Product, error)
@@ -91,6 +92,11 @@ func (s *OrderService) GetOrder(ctx context.Context, id string, accessToken stri
 		return nil, err
 	}
 	return order, nil
+}
+
+// ListOrdersForGuest returns recent orders for an authenticated guest email.
+func (s *OrderService) ListOrdersForGuest(ctx context.Context, email string) ([]db.Order, error) {
+	return s.store.ListOrdersByCustomerEmail(ctx, email, 20)
 }
 
 // GetOrderBySession returns an order by Stripe checkout session ID when the access token matches.

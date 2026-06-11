@@ -9,6 +9,7 @@ const (
 	OrderStatusFailed     = "failed"
 	OrderStatusExpired    = "expired"
 	OrderStatusCanceled   = "canceled"
+	OrderStatusRefunded   = "refunded"
 )
 
 // Webhook processing status values.
