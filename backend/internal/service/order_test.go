@@ -3,10 +3,12 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
+	"github.com/rs/xid"
 )
 
 func TestReplayCheckoutHosted(t *testing.T) {
@@ -75,6 +77,21 @@ func TestExtractRequestHash(t *testing.T) {
 	meta, _ := json.Marshal(map[string]any{"_request_body_hash": "abc123"})
 	if got := extractRequestHash(meta); got != "abc123" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestGenerateOrderNumberUnique(t *testing.T) {
+	seen := make(map[string]bool, 100)
+	for range 100 {
+		id := xid.New().String()
+		n := generateOrderNumber(id)
+		if seen[n] {
+			t.Fatalf("duplicate order number: %s", n)
+		}
+		seen[n] = true
+		if !strings.HasPrefix(n, "ORD-") {
+			t.Fatalf("unexpected format: %s", n)
+		}
 	}
 }
 

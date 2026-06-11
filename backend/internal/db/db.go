@@ -273,6 +273,13 @@ func (s *Store) UpdateOrderSession(ctx context.Context, orderID, sessionID, chec
 	return err
 }
 
+func (s *Store) ClearOrderIdempotencyKey(ctx context.Context, orderID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE orders SET idempotency_key = NULL, updated_at = now()
+		WHERE id = $1 AND status = 'canceled'`, orderID)
+	return err
+}
+
 func (s *Store) CancelOrder(ctx context.Context, orderID, reason string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE orders SET status = 'canceled',

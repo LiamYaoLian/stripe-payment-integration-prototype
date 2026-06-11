@@ -98,7 +98,10 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 				return nil, &api.AppError{Status: 409, Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key reused with different body"}
 			}
 			if existing.Status == "canceled" {
-				// allow new order below
+				// Release the key so a new order can be created with the same Idempotency-Key.
+				if err := s.store.ClearOrderIdempotencyKey(ctx, existing.ID); err != nil {
+					return nil, err
+				}
 			} else if existing.StripeCheckoutSessionID == nil || *existing.StripeCheckoutSessionID == "" {
 				return nil, &api.AppError{Status: 409, Code: "CHECKOUT_IN_PROGRESS", Message: "checkout session creation in progress"}
 			} else {
@@ -159,7 +162,7 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 	}
 
 	orderID := xid.New().String()
-	orderNumber := fmt.Sprintf("ORD-%s-%s", time.Now().Format("20060102"), strings.ToUpper(xid.New().String()[:4]))
+	orderNumber := generateOrderNumber(orderID)
 
 	var successURL, cancelURL, returnURL *string
 	if input.UIMode == "hosted" {
@@ -261,6 +264,10 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 		result.ClientSecret = clientSecret
 	}
 	return result, nil
+}
+
+func generateOrderNumber(orderID string) string {
+	return fmt.Sprintf("ORD-%s-%s", time.Now().Format("20060102"), strings.ToUpper(orderID))
 }
 
 func replayCheckout(o *db.Order) *CheckoutResult {
