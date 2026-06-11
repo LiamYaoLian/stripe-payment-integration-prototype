@@ -172,8 +172,8 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 |----------|-----|
 | MVP / internal tool | Yes |
 | Behind your app's auth | Yes |
-| Public standalone checkout | Harden guest auth + distributed rate limits first |
-| Public at scale | Add load tests, registry CD, frontend traces |
+| Public standalone checkout | Mostly — add SMTP + CSRF before broad public launch |
+| Public at scale | No — add load tests, registry CD, frontend traces |
 | Enterprise | No |
 
 **Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · `scripts/k8s-deploy.sh` · review `docs/COMPLIANCE.md` · import Grafana dashboard + Prometheus rules.
