@@ -132,7 +132,7 @@ Vite + React; dev proxy `/api` → `:8080`.
 
 Webhook signature on raw body · server-side pricing · order tokens · rate limits · CORS to `CORS_ORIGIN` · no `client_secret` on order reads · structured logs (no secrets/card data).
 
-**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault.
+**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault. Scrape `/metrics`; load `deploy/prometheus/alerts.yaml`.
 
 **Stack:** Go + chi + pgx · Postgres 16 · `golang-migrate` · `stripe-go` + `@stripe/react-stripe-js`.
 
@@ -150,14 +150,14 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 
 ## Production readiness
 
-**~75%** payment microservice · **~55%** full platform. Money path is solid behind your own auth; platform layer (identity, tracing, compliance) has gaps.
+**~78%** payment microservice · **~55%** full platform. Money path is solid behind your own auth; platform layer (identity, tracing, compliance) has gaps.
 
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
 | Security | A− | Order-token proof for guest JWT; no magic-link email verify |
-| Reliability | B | No HA design |
-| Observability | C+ | No tracing/alerts in repo |
+| Reliability | B+ | 2-replica K8s, probes, PDB, graceful shutdown; no multi-region |
+| Observability | B− | Prometheus counters/histograms + `deploy/prometheus/alerts.yaml`; no tracing |
 | Ops | B− | K8s templates, no real CD |
 | Compliance | D | No PCI/GDPR docs |
 
@@ -168,4 +168,4 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 | Public at scale | Add alerts, tracing, load tests |
 | Enterprise | No |
 
-**Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · alert on `/health/ready`, webhook errors, checkout 5xx.
+**Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · apply K8s PDB + `deploy/prometheus/alerts.yaml`.
