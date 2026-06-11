@@ -104,7 +104,11 @@ export async function createCheckoutSession(
   throw new Error('checkout failed')
 }
 
-export async function createGuestSession(email: string): Promise<{ token: string; expiresAt: string; role: string }> {
+export async function createGuestSession(
+  email: string,
+  orderId: string,
+  accessToken: string,
+): Promise<{ token: string; expiresAt: string; role: string }> {
   return request('/api/auth/session', z.object({
     token: z.string(),
     expiresAt: z.string(),
@@ -112,7 +116,7 @@ export async function createGuestSession(email: string): Promise<{ token: string
   }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, orderId, accessToken }),
   })
 }
 

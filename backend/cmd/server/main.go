@@ -43,7 +43,7 @@ func main() {
 		cfg.IgnoreStripeAPIVersionMismatch,
 		cfg.StripeAPIVersion,
 	)
-	authSvc := service.NewAuthService(cfg.AuthJWTSecret)
+	authSvc := service.NewAuthService(store, cfg.AuthJWTSecret)
 
 	r := server.NewRouter(server.RouterDeps{
 		Health:         store,

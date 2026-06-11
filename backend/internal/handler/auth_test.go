@@ -7,12 +7,29 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
+	"github.com/rs/xid"
 )
 
 func TestAuthCreateGuestSession(t *testing.T) {
-	h := NewAuthHandler(service.NewAuthService("test-jwt-secret"))
-	body, _ := json.Marshal(map[string]string{"email": "buyer@example.com"})
+	store := testutil.NewFakeOrderStore()
+	accessToken, hash, err := auth.GenerateOrderAccessToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	email := "buyer@example.com"
+	orderID := xid.New().String()
+	store.Orders[orderID] = &db.Order{
+		ID: orderID, CustomerEmail: &email, AccessTokenHash: &hash,
+	}
+
+	h := NewAuthHandler(service.NewAuthService(store, "test-jwt-secret"))
+	body, _ := json.Marshal(map[string]string{
+		"email": email, "orderId": orderID, "accessToken": accessToken,
+	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/session", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

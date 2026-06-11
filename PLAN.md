@@ -75,7 +75,7 @@ Also: `stripeclient/` (SDK), `middleware/` (rate limit, JWT, logging), `auth/` (
 - Order inserted before Stripe call; failures → `canceled` (never deleted).
 - Redirect URLs from `APP_FRONTEND_URL` only (no client-supplied URLs).
 - `Idempotency-Key`: same key+body replays session; mismatch → `409`; in-flight → `409 CHECKOUT_IN_PROGRESS`.
-- `accessToken` → `X-Order-Token` for order reads; guest JWT for `/api/orders/mine`.
+- `accessToken` → `X-Order-Token` for order reads; guest JWT for `/api/orders/mine` (requires `orderId` + `accessToken` proof at `POST /api/auth/session`).
 
 ---
 
@@ -90,7 +90,7 @@ Envelope: `{ "data": …, "error": null }` or `{ "data": null, "error": { "code"
 | `POST /api/checkout/sessions` | `uiMode`, `items[]`; header `Idempotency-Key` |
 | `GET /api/orders/by-session/:id` | Poll after pay; `X-Order-Token` |
 | `GET /api/orders/:id` | Same token |
-| `POST /api/auth/session` | Guest JWT by email |
+| `POST /api/auth/session` | Guest JWT; requires `email` + `orderId` + `accessToken` proof |
 | `GET /api/orders/mine` | Bearer JWT |
 | `POST /api/webhooks/stripe` | Stripe events |
 | `GET /metrics` | Prometheus; `X-API-Key` |
@@ -155,7 +155,7 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
-| Security | B+ | Guest JWT only |
+| Security | A− | Order-token proof for guest JWT; no magic-link email verify |
 | Reliability | B | No HA design |
 | Observability | C+ | No tracing/alerts in repo |
 | Ops | B− | K8s templates, no real CD |

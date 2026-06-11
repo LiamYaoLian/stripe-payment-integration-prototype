@@ -64,7 +64,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(60 * time.Second))
 		r.Get("/api/products", productsHandler.ServeHTTP)
-		r.Post("/api/auth/session", authHandler.CreateSession)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimitByIP(10, time.Minute))
+			r.Post("/api/auth/session", authHandler.CreateSession)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RateLimitByIP(20, time.Minute))

@@ -19,7 +19,9 @@ func NewAuthHandler(auth *service.AuthService) *AuthHandler {
 }
 
 type guestSessionRequest struct {
-	Email string `json:"email"`
+	Email       string `json:"email"`
+	OrderID     string `json:"orderId"`
+	AccessToken string `json:"accessToken"`
 }
 
 type guestSessionResponse struct {
@@ -39,7 +41,7 @@ func (h *AuthHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.auth.CreateGuestSession(r.Context(), body.Email)
+	result, err := h.auth.CreateGuestSession(r.Context(), body.Email, body.OrderID, body.AccessToken)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

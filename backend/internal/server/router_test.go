@@ -20,7 +20,7 @@ func newTestRouter(t *testing.T, health testutil.FakeHealth) (*testutil.FakeOrde
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
-	authSvc := service.NewAuthService("test-jwt-secret")
+	authSvc := service.NewAuthService(store, "test-jwt-secret")
 	return store, NewRouter(RouterDeps{
 		Health:         health,
 		Products:       products,
@@ -122,7 +122,7 @@ func TestRouterWebhookCheckoutCompleted(t *testing.T) {
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
-	authSvc := service.NewAuthService("test-jwt-secret")
+	authSvc := service.NewAuthService(store, "test-jwt-secret")
 	r := NewRouter(RouterDeps{
 		Health: testutil.FakeHealth{}, Products: products, Orders: orders, Webhooks: webhooks, Auth: authSvc,
 		CORSOrigin: "http://localhost:5173", AuthJWTSecret: "test-jwt-secret", MetricsEnabled: false,
