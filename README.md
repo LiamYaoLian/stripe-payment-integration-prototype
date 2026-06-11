@@ -49,6 +49,8 @@ stripe listen --forward-to localhost:8080/api/webhooks/stripe
 
 Copy the `whsec_...` secret printed by the CLI into `backend/.env` as `STRIPE_WEBHOOK_SECRET`, then restart the backend.
 
+> **Note:** Use the secret from `stripe listen` output — not the Dashboard webhook secret. It changes each time you restart `stripe listen`.
+
 ## Pay with a test card
 
 Use **test mode** keys (`pk_test_...`, `sk_test_...`) in `backend/.env` and `frontend/.env`.

@@ -21,11 +21,16 @@ export default function CheckoutSuccess() {
       try {
         const o = await getOrderBySession(sessionId)
         setOrder(o)
+        setError(null)
         if (['paid', 'failed', 'expired', 'canceled'].includes(o.status)) return
         if (attempts++ < maxAttempts) {
           setTimeout(poll, 1000)
         }
       } catch (e) {
+        if (attempts++ < maxAttempts) {
+          setTimeout(poll, 1000)
+          return
+        }
         setError(e instanceof Error ? e.message : 'Failed to load order')
       }
     }

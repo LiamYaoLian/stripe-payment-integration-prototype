@@ -34,8 +34,11 @@ type WebhookResult struct {
 }
 
 func (s *WebhookService) Handle(ctx context.Context, body []byte, signature string) (*WebhookResult, error) {
-	event, err := webhook.ConstructEvent(body, signature, s.webhookSecret)
+	event, err := webhook.ConstructEventWithOptions(body, signature, s.webhookSecret, webhook.ConstructEventOptions{
+		IgnoreAPIVersionMismatch: true,
+	})
 	if err != nil {
+		slog.Warn("webhook signature verification failed", "error", err)
 		return &WebhookResult{StatusCode: 400, Body: map[string]any{"error": "invalid signature"}}, nil
 	}
 

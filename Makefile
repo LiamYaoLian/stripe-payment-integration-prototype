@@ -18,8 +18,10 @@ run:
 	cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server
 
 dev:
-	@echo "Starting backend (:8080) and frontend (:5173)..."
+	@echo "Starting backend (:8080)..."
 	@(cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server) & \
+	until curl -sf http://localhost:8080/health >/dev/null 2>&1; do sleep 0.5; done; \
+	echo "Starting frontend (:5173)..."; \
 	(cd frontend && npm run dev) & \
 	wait
 
