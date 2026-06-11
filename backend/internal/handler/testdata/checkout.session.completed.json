@@ -1,0 +1,14 @@
+{
+  "id": "evt_test_completed",
+  "object": "event",
+  "type": "checkout.session.completed",
+  "data": {
+    "object": {
+      "id": "cs_test_completed",
+      "object": "checkout.session",
+      "status": "complete",
+      "payment_status": "paid",
+      "payment_intent": "pi_test_123"
+    }
+  }
+}
