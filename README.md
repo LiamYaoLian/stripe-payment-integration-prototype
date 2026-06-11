@@ -34,6 +34,13 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Webhooks
 
+Install and authenticate the Stripe CLI (once):
+
+```bash
+brew install stripe/stripe-cli/stripe
+stripe login
+```
+
 In a separate terminal:
 
 ```bash
@@ -42,9 +49,32 @@ stripe listen --forward-to localhost:8080/api/webhooks/stripe
 
 Copy the `whsec_...` secret printed by the CLI into `backend/.env` as `STRIPE_WEBHOOK_SECRET`, then restart the backend.
 
-## Test card
+## Pay with a test card
 
-Use Stripe test card `4242 4242 4242 4242`, any future expiry, any CVC.
+Use **test mode** keys (`pk_test_...`, `sk_test_...`) in `backend/.env` and `frontend/.env`.
+
+1. Start the app (`make dev`) and forward webhooks (`stripe listen --forward-to localhost:8080/api/webhooks/stripe`).
+2. Open [http://localhost:5173](http://localhost:5173) and click **Pay (Hosted)** or **Pay (Embedded)** on a product.
+3. On the Stripe Checkout form, enter:
+
+| Field | Value |
+|-------|-------|
+| Card number | `4242 4242 4242 4242` |
+| Expiry | Any future date (e.g. `12/34`) |
+| CVC | Any 3 digits (e.g. `123`) |
+| ZIP / postal | Any (e.g. `12345`) |
+
+4. Complete payment — the success/complete page should show order status **`paid`**.
+
+**Other test cards**
+
+| Card | Result |
+|------|--------|
+| `4242 4242 4242 4242` | Success |
+| `4000 0000 0000 0002` | Declined |
+| `4000 0025 0000 3155` | Requires 3D Secure |
+
+More: [Stripe test cards](https://docs.stripe.com/testing#cards)
 
 ## Flows
 
