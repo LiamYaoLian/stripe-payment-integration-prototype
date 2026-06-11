@@ -124,7 +124,7 @@ func TestWebhookHandleCheckoutCompletedPaid(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := testutil.NewFakeWebhookStore()
-	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
+	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
@@ -185,11 +185,13 @@ func TestWebhookHandleCheckoutCompletedProcessing(t *testing.T) {
 			"object": "checkout.session",
 			"status": "complete",
 			"payment_status": "unpaid",
+			"amount_total": 2500,
+			"currency": "usd",
 			"payment_intent": "pi_async"
 		}}
 	}`)
 	store := testutil.NewFakeWebhookStore()
-	store.Orders["cs_test_processing"] = &db.Order{ID: "ord4", Status: "pending"}
+	store.Orders["cs_test_processing"] = &db.Order{ID: "ord4", Status: "pending", TotalAmountCents: 2500, Currency: "usd"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
@@ -208,11 +210,13 @@ func TestWebhookHandleAsyncSucceeded(t *testing.T) {
 			"id": "cs_test_async",
 			"object": "checkout.session",
 			"status": "complete",
+			"amount_total": 1200,
+			"currency": "usd",
 			"payment_intent": {"id": "pi_async"}
 		}}
 	}`)
 	store := testutil.NewFakeWebhookStore()
-	store.Orders["cs_test_async"] = &db.Order{ID: "ord_async", Status: "processing"}
+	store.Orders["cs_test_async"] = &db.Order{ID: "ord_async", Status: "processing", TotalAmountCents: 1200, Currency: "usd"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
@@ -242,7 +246,7 @@ func TestWebhookHandleProcessErrorReturns500(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := testutil.NewFakeWebhookStore()
-	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
+	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
 	store.UpdateErr = errors.New("db update failed")
 	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
@@ -305,6 +309,54 @@ func TestWebhookHandleAsyncPaymentFailed(t *testing.T) {
 	}
 }
 
+func TestWebhookHandleCheckoutCompletedAmountMismatch(t *testing.T) {
+	payload := []byte(`{
+		"id": "evt_amount_mismatch",
+		"object": "event",
+		"type": "checkout.session.completed",
+		"api_version": "2026-05-27.dahlia",
+		"data": {"object": {
+			"id": "cs_test_mismatch",
+			"object": "checkout.session",
+			"status": "complete",
+			"payment_status": "paid",
+			"amount_total": 100,
+			"currency": "usd",
+			"payment_intent": "pi_mismatch"
+		}}
+	}`)
+	store := testutil.NewFakeWebhookStore()
+	store.Orders["cs_test_mismatch"] = &db.Order{ID: "ord-mismatch", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
+	if len(store.StatusUpdate) != 0 {
+		t.Fatalf("expected no status updates, got %v", store.StatusUpdate)
+	}
+}
+
+func TestWebhookHandleCheckoutCompletedMissingAmount(t *testing.T) {
+	payload := []byte(`{
+		"id": "evt_missing_amount",
+		"object": "event",
+		"type": "checkout.session.completed",
+		"api_version": "2026-05-27.dahlia",
+		"data": {"object": {
+			"id": "cs_test_missing",
+			"object": "checkout.session",
+			"status": "complete",
+			"payment_status": "paid",
+			"currency": "usd",
+			"payment_intent": "pi_missing"
+		}}
+	}`)
+	store := testutil.NewFakeWebhookStore()
+	store.Orders["cs_test_missing"] = &db.Order{ID: "ord-missing", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
+	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
+}
+
 func TestWebhookHandleChargeRefunded(t *testing.T) {
 	raw, err := os.ReadFile("../handler/testdata/charge.refunded.json")
 	if err != nil {
@@ -312,7 +364,7 @@ func TestWebhookHandleChargeRefunded(t *testing.T) {
 	}
 	store := testutil.NewFakeWebhookStore()
 	pi := "pi_test_refund"
-	store.Orders["cs_paid"] = &db.Order{ID: "ord-refund", Status: "paid", StripePaymentIntentID: &pi}
+	store.Orders["cs_paid"] = &db.Order{ID: "ord-refund", Status: "paid", TotalAmountCents: 4900, Currency: "usd", StripePaymentIntentID: &pi}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)

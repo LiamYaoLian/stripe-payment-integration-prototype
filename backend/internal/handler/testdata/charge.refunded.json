@@ -8,6 +8,8 @@
       "id": "ch_test_refunded",
       "object": "charge",
       "refunded": true,
+      "amount": 4900,
+      "currency": "usd",
       "payment_intent": "pi_test_refund"
     }
   }

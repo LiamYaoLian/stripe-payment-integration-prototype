@@ -39,7 +39,7 @@ func TestWebhooksHandlerCheckoutCompletedPaid(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := testutil.NewFakeWebhookStore()
-	store.Orders["cs_test_completed"] = &db.Order{ID: "ord-http", Status: "pending"}
+	store.Orders["cs_test_completed"] = &db.Order{ID: "ord-http", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
 	svc := service.NewWebhookService(store, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)
 	h := NewWebhooksHandler(svc)
 

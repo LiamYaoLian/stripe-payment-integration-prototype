@@ -118,7 +118,7 @@ func TestRouterWebhookCheckoutCompleted(t *testing.T) {
 	}
 	store := testutil.NewFakeOrderStore()
 	whStore := testutil.NewFakeWebhookStore()
-	whStore.Orders["cs_test_completed"] = &db.Order{ID: "ord-wh", Status: "pending"}
+	whStore.Orders["cs_test_completed"] = &db.Order{ID: "ord-wh", Status: "pending", TotalAmountCents: 4900, Currency: "usd"}
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
 	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true, testutil.TestStripeAPIVersion)

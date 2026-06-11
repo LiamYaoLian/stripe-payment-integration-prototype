@@ -136,11 +136,13 @@ func TestCreateCheckoutSessionIdempotencyReplay(t *testing.T) {
 	hash, _ := canonicalBodyHash(hostedInput())
 	sess := "cs_existing"
 	url := "https://checkout.stripe.com/existing"
-	store.OrdersByIdempotency["idem-replay"] = &db.Order{
+	existing := &db.Order{
 		ID: "ord-existing", OrderNumber: "ORD-EXIST", UIMode: "hosted", Status: "pending",
 		StripeCheckoutSessionID: &sess, StripeCheckoutURL: &url,
 		Metadata: mustMetaHash(t, hash),
 	}
+	store.OrdersByIdempotency["idem-replay"] = existing
+	store.Orders["ord-existing"] = existing
 	svc := newTestOrderService(store, &testutil.FakeStripe{})
 	result, err := svc.CreateCheckoutSession(t.Context(), "idem-replay", hostedInput())
 	if err != nil {
@@ -148,6 +150,25 @@ func TestCreateCheckoutSessionIdempotencyReplay(t *testing.T) {
 	}
 	if result.SessionID != sess || result.URL != url {
 		t.Fatalf("result %+v", result)
+	}
+	if result.AccessToken == "" {
+		t.Fatal("expected accessToken on idempotent replay")
+	}
+	if store.Orders["ord-existing"].AccessTokenHash == nil {
+		t.Fatal("expected rotated access token hash on replay")
+	}
+}
+
+func TestCreateCheckoutSessionIdempotencyRace(t *testing.T) {
+	store := testutil.NewFakeOrderStore()
+	store.RaceInsertViolation = true
+	svc := newTestOrderService(store, &testutil.FakeStripe{})
+	result, err := svc.CreateCheckoutSession(t.Context(), "idem-race", hostedInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AccessToken == "" || result.SessionID != "cs_race_winner" {
+		t.Fatalf("expected replay after unique violation, got %+v", result)
 	}
 }
 

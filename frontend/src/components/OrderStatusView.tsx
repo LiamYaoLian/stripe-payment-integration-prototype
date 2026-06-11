@@ -6,6 +6,8 @@ interface OrderStatusViewProps {
   order: Order
   showPaidMessage?: boolean
   showPendingMessage?: boolean
+  timedOut?: boolean
+  timeoutMessage?: string
 }
 
 export function OrderStatusView({
@@ -13,6 +15,8 @@ export function OrderStatusView({
   order,
   showPaidMessage = false,
   showPendingMessage = false,
+  timedOut = false,
+  timeoutMessage,
 }: OrderStatusViewProps) {
   return (
     <div>
@@ -28,7 +32,7 @@ export function OrderStatusView({
       )}
       {showPendingMessage &&
         (order.status === 'pending' || order.status === 'processing') && (
-          <p>Waiting for payment confirmation...</p>
+          <p>{timedOut && timeoutMessage ? timeoutMessage : 'Waiting for payment confirmation...'}</p>
         )}
       <BackToCatalogLink />
     </div>

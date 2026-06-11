@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/telemetry"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
 	"github.com/stripe/stripe-go/v82/webhook"
@@ -107,7 +105,7 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 			ID: xid.New().String(), StripeEventID: event.ID, EventType: string(event.Type),
 			ProcessingStatus: domain.WebhookStatusReceived, Payload: payload,
 		}); err != nil {
-			if isUniqueViolation(err) {
+			if db.IsUniqueViolation(err) {
 				return s.handleExistingAfterInsertRace(ctx, event.ID)
 			}
 			return webhookStoreError(WebhookOutcomeRetryLater, err)
@@ -143,11 +141,6 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 	}
 
 	return WebhookOutcomeAcknowledged, nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (s *WebhookService) handleExistingAfterInsertRace(ctx context.Context, eventID string) (WebhookOutcome, error) {
@@ -246,6 +239,9 @@ func (s *WebhookService) completionChargeRefunded(ctx context.Context, event str
 	if rawOrder.Status != domain.OrderStatusPaid {
 		return completion, fmt.Errorf("order %s not refundable from status %s", rawOrder.ID, rawOrder.Status)
 	}
+	if err := verifyChargeAmount(rawOrder, charge); err != nil {
+		return completion, err
+	}
 	completion.OrderID = &rawOrder.ID
 	completion.RefundOnly = true
 	return completion, nil
@@ -280,6 +276,9 @@ func (s *WebhookService) completionSessionCompleted(ctx context.Context, event s
 	if err != nil {
 		return completion, err
 	}
+	if err := verifyCheckoutSessionAmount(order, session); err != nil {
+		return completion, err
+	}
 	completion.OrderID = &order.ID
 
 	paymentIntent := paymentIntentID(session)
@@ -308,6 +307,9 @@ func (s *WebhookService) completionAsyncSucceeded(ctx context.Context, event str
 	rawOrder, lookupErr := s.store.GetOrderBySessionID(ctx, session.ID)
 	order, err := resolveWebhookOrder(rawOrder, session.ID, lookupErr)
 	if err != nil {
+		return completion, err
+	}
+	if err := verifyCheckoutSessionAmount(order, session); err != nil {
 		return completion, err
 	}
 	now := time.Now().UTC()

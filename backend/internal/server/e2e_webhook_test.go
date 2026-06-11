@@ -64,6 +64,8 @@ func TestE2EWebhookCheckoutCompleted(t *testing.T) {
 			"object": "checkout.session",
 			"status": "complete",
 			"payment_status": "paid",
+			"amount_total": 1000,
+			"currency": "usd",
 			"payment_intent": "pi_e2e_` + xid.New().String()[:8] + `"
 		}}
 	}`)

@@ -4,13 +4,14 @@ import { ErrorMessage } from '../components/ErrorMessage'
 import { LoadingMessage } from '../components/LoadingMessage'
 import { OrderStatusView } from '../components/OrderStatusView'
 import { LAST_EMBEDDED_PRODUCT_ID_KEY } from '../constants/checkout'
+import { POLL_TIMEOUT_MESSAGE } from '../constants/checkout'
 import { useOrderPolling } from '../hooks/useOrderPolling'
 import { clearIdempotencyKey } from '../lib/idempotency'
 
 export function CheckoutComplete() {
   const [params] = useSearchParams()
   const sessionId = params.get('session_id')
-  const { order, error, isLoading } = useOrderPolling(sessionId)
+  const { order, error, isLoading, timedOut } = useOrderPolling(sessionId)
 
   useEffect(() => {
     const productId = sessionStorage.getItem(LAST_EMBEDDED_PRODUCT_ID_KEY)
@@ -26,5 +27,13 @@ export function CheckoutComplete() {
     return <LoadingMessage message="Confirming payment..." />
   }
 
-  return <OrderStatusView title="Checkout Complete" order={order} />
+  return (
+    <OrderStatusView
+      title="Checkout Complete"
+      order={order}
+      showPendingMessage
+      timedOut={timedOut}
+      timeoutMessage={POLL_TIMEOUT_MESSAGE}
+    />
+  )
 }

@@ -2,12 +2,13 @@ import { useSearchParams } from 'react-router-dom'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { LoadingMessage } from '../components/LoadingMessage'
 import { OrderStatusView } from '../components/OrderStatusView'
+import { POLL_TIMEOUT_MESSAGE } from '../constants/checkout'
 import { useOrderPolling } from '../hooks/useOrderPolling'
 
 export function CheckoutSuccess() {
   const [params] = useSearchParams()
   const sessionId = params.get('session_id')
-  const { order, error, isLoading } = useOrderPolling(sessionId)
+  const { order, error, isLoading, timedOut } = useOrderPolling(sessionId)
 
   if (error) {
     return <ErrorMessage message={error} />
@@ -22,6 +23,8 @@ export function CheckoutSuccess() {
       order={order}
       showPaidMessage
       showPendingMessage
+      timedOut={timedOut}
+      timeoutMessage={POLL_TIMEOUT_MESSAGE}
     />
   )
 }

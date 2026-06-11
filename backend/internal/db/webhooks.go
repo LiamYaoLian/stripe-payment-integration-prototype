@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
@@ -79,7 +80,7 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 
 	switch {
 	case completion.RefundOnly && completion.OrderID != nil:
-		_, err := tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			UPDATE orders SET status = $2::order_status, updated_at = now()
 			WHERE id = $1 AND status = 'paid'::order_status`,
 			*completion.OrderID, domain.OrderStatusRefunded,
@@ -87,8 +88,11 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 		if err != nil {
 			return err
 		}
+		if err := ensureOrderWebhookEffect(ctx, tx, *completion.OrderID, domain.OrderStatusRefunded, tag.RowsAffected(), true); err != nil {
+			return err
+		}
 	case completion.NewStatus != "" && completion.OrderID != nil:
-		_, err := tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			UPDATE orders SET status = $2::order_status,
 				stripe_payment_intent_id = COALESCE($3, stripe_payment_intent_id),
 				paid_at = COALESCE($4, paid_at),
@@ -97,6 +101,9 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 			*completion.OrderID, completion.NewStatus, completion.PaymentIntentID, completion.PaidAt, completion.AllowedFrom,
 		)
 		if err != nil {
+			return err
+		}
+		if err := ensureOrderWebhookEffect(ctx, tx, *completion.OrderID, completion.NewStatus, tag.RowsAffected(), false); err != nil {
 			return err
 		}
 	}
@@ -115,6 +122,38 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 	}
 
 	return tx.Commit(ctx)
+}
+
+func ensureOrderWebhookEffect(
+	ctx context.Context,
+	tx pgx.Tx,
+	orderID, targetStatus string,
+	rowsAffected int64,
+	refundOnly bool,
+) error {
+	if rowsAffected > 0 {
+		return nil
+	}
+
+	var currentStatus string
+	err := tx.QueryRow(ctx, `SELECT status::text FROM orders WHERE id = $1`, orderID).Scan(&currentStatus)
+	if err == pgx.ErrNoRows {
+		return fmt.Errorf("order %s not found for webhook update", orderID)
+	}
+	if err != nil {
+		return err
+	}
+
+	if domain.WebhookOrderEffectSatisfied(currentStatus, targetStatus, refundOnly) {
+		slog.Info("webhook order update idempotent",
+			"order_id", orderID,
+			"current_status", currentStatus,
+			"target_status", targetStatus,
+		)
+		return nil
+	}
+
+	return fmt.Errorf("order %s transition to %s had no effect (current %s)", orderID, targetStatus, currentStatus)
 }
 
 // MarkWebhookProcessed marks a processing webhook event as successfully processed.

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type FakeOrderStore struct {
@@ -16,6 +17,8 @@ type FakeOrderStore struct {
 	ListActiveProductsErr  error
 	UpdateSessionErr       error
 	CancelReasons          []string
+	// RaceInsertViolation simulates a concurrent idempotency-key insert winning between lookup and insert.
+	RaceInsertViolation bool
 }
 
 func NewFakeOrderStore() *FakeOrderStore {
@@ -94,6 +97,26 @@ func (f *FakeOrderStore) GetProductsByIDs(_ context.Context, ids []string) (map[
 }
 
 func (f *FakeOrderStore) CreateOrderWithItems(_ context.Context, order db.CreateOrderParams, items []db.CreateOrderItemParams) error {
+	if f.RaceInsertViolation && order.IdempotencyKey != nil {
+		f.RaceInsertViolation = false
+		sess := "cs_race_winner"
+		url := "https://checkout.stripe.com/race"
+		winner := &db.Order{
+			ID: "ord-race-winner", OrderNumber: "ORD-RACE", UIMode: order.UIMode, Status: "pending",
+			IdempotencyKey: order.IdempotencyKey, Metadata: order.Metadata,
+			StripeCheckoutSessionID: &sess, StripeCheckoutURL: &url,
+		}
+		f.Orders[winner.ID] = winner
+		f.OrdersByIdempotency[*order.IdempotencyKey] = winner
+		f.OrdersBySession[sess] = winner
+		return &pgconn.PgError{Code: "23505"}
+	}
+	if order.IdempotencyKey != nil {
+		if existing, ok := f.OrdersByIdempotency[*order.IdempotencyKey]; ok && existing.ID != order.ID {
+			return &pgconn.PgError{Code: "23505"}
+		}
+	}
+
 	meta := order.Metadata
 	if meta == nil {
 		meta = json.RawMessage(`{}`)
@@ -127,6 +150,15 @@ func (f *FakeOrderStore) CreateOrderWithItems(_ context.Context, order db.Create
 	if o.IdempotencyKey != nil {
 		f.OrdersByIdempotency[*o.IdempotencyKey] = o
 	}
+	return nil
+}
+
+func (f *FakeOrderStore) UpdateOrderAccessTokenHash(_ context.Context, orderID, tokenHash string) error {
+	o := f.Orders[orderID]
+	if o == nil {
+		return nil
+	}
+	o.AccessTokenHash = &tokenHash
 	return nil
 }
 

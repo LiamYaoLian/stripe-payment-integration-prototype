@@ -39,6 +39,26 @@ describe('CheckoutSuccess', () => {
     expect(client.getOrderBySession).toHaveBeenCalledTimes(2)
   })
 
+  it('shows timeout message when payment stays pending', async () => {
+    vi.mocked(client.getOrderBySession).mockResolvedValue({
+      ...paidOrder,
+      status: 'pending',
+    })
+
+    renderWithRouter(<CheckoutSuccess />, {
+      path: '/checkout/success',
+      initialEntry: '/checkout/success?session_id=cs_test_abc',
+    })
+
+    await act(async () => {
+      for (let i = 0; i < 31; i++) {
+        await vi.advanceTimersByTimeAsync(1000)
+      }
+    })
+
+    expect(screen.getByText(/Payment is still confirming/)).toBeInTheDocument()
+  })
+
   it('shows error after max retries', async () => {
     vi.mocked(client.getOrderBySession).mockRejectedValue(new Error('network'))
 

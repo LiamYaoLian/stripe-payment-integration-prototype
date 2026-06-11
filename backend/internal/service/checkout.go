@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
 	"github.com/rs/xid"
@@ -56,7 +57,14 @@ func (s *OrderService) resolveIdempotency(
 	if existing.StripeCheckoutSessionID == nil || *existing.StripeCheckoutSessionID == "" {
 		return nil, &api.AppError{Status: 409, Code: "CHECKOUT_IN_PROGRESS", Message: "checkout session creation in progress"}
 	}
-	return replayCheckout(existing), nil
+	accessToken, tokenHash, err := auth.GenerateOrderAccessToken()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.UpdateOrderAccessTokenHash(ctx, existing.ID, tokenHash); err != nil {
+		return nil, err
+	}
+	return replayCheckout(existing, accessToken), nil
 }
 
 func (s *OrderService) buildCheckoutLineItems(ctx context.Context, items []CheckoutItemInput) (*checkoutLineItems, error) {

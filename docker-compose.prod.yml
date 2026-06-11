@@ -61,7 +61,8 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: http://localhost:8080
+        # Same-origin /api — nginx proxies to the api service (see frontend/nginx.conf).
+        VITE_API_URL: ""
         VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:?set VITE_STRIPE_PUBLISHABLE_KEY}
     restart: unless-stopped
     ports:

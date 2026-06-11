@@ -52,6 +52,7 @@ type orderStore interface {
 	GetProduct(ctx context.Context, id string) (*db.Product, error)
 	GetProductsByIDs(ctx context.Context, ids []string) (map[string]db.Product, error)
 	CreateOrderWithItems(ctx context.Context, order db.CreateOrderParams, items []db.CreateOrderItemParams) error
+	UpdateOrderAccessTokenHash(ctx context.Context, orderID, tokenHash string) error
 	UpdateOrderSession(ctx context.Context, orderID, sessionID, checkoutURL, clientSecret string) error
 	CancelOrder(ctx context.Context, orderID, reason string) error
 }
@@ -175,6 +176,11 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 	}
 
 	if err := s.insertPendingOrder(ctx, orderID, orderNumber, bodyHash, tokenHash, idempotencyKey, input, lineItems, urls); err != nil {
+		if db.IsUniqueViolation(err) && idempotencyKey != "" {
+			if replay, replayErr := s.resolveIdempotency(ctx, idempotencyKey, bodyHash); replayErr != nil || replay != nil {
+				return replay, replayErr
+			}
+		}
 		return nil, err
 	}
 
@@ -214,9 +220,9 @@ func generateOrderNumber(orderID string) string {
 	return fmt.Sprintf("ORD-%s-%s", time.Now().Format("20060102"), strings.ToUpper(orderID))
 }
 
-func replayCheckout(order *db.Order) *CheckoutResult {
+func replayCheckout(order *db.Order, accessToken string) *CheckoutResult {
 	result := &CheckoutResult{
-		OrderID: order.ID, OrderNumber: order.OrderNumber,
+		OrderID: order.ID, OrderNumber: order.OrderNumber, AccessToken: accessToken,
 	}
 	if order.StripeCheckoutSessionID != nil {
 		result.SessionID = *order.StripeCheckoutSessionID

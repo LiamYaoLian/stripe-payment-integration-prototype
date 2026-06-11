@@ -18,8 +18,8 @@ func TestReplayCheckoutHosted(t *testing.T) {
 		ID: "ord1", OrderNumber: "ORD-001", UIMode: "hosted",
 		StripeCheckoutSessionID: &sess, StripeCheckoutURL: &url,
 	}
-	r := replayCheckout(o)
-	if r.OrderID != "ord1" || r.SessionID != sess || r.URL != url {
+	r := replayCheckout(o, "replay-token")
+	if r.OrderID != "ord1" || r.SessionID != sess || r.URL != url || r.AccessToken != "replay-token" {
 		t.Fatalf("unexpected replay: %+v", r)
 	}
 	if r.ClientSecret != "" {
@@ -34,7 +34,7 @@ func TestReplayCheckoutEmbedded(t *testing.T) {
 		ID: "ord2", OrderNumber: "ORD-002", UIMode: "embedded",
 		StripeCheckoutSessionID: &sess, StripeClientSecret: &secret,
 	}
-	r := replayCheckout(o)
+	r := replayCheckout(o, "replay-token")
 	if r.ClientSecret != secret {
 		t.Fatalf("expected client secret, got %+v", r)
 	}

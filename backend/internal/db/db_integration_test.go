@@ -366,6 +366,53 @@ func TestIntegrationCompleteWebhookProcessing(t *testing.T) {
 	}
 }
 
+func TestIntegrationCompleteWebhookProcessingNoEffectFails(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+	ctx := context.Background()
+
+	orderID := xid.New().String()
+	eventID := "evt_no_effect_" + xid.New().String()
+	t.Cleanup(func() {
+		deleteTestWebhookEvent(ctx, store, eventID)
+		deleteTestOrder(ctx, store, orderID)
+	})
+
+	err := store.CreateOrderWithItems(ctx, CreateOrderParams{
+		ID: orderID, OrderNumber: "ORD-WH-" + xid.New().String()[:6],
+		TotalAmountCents: 1000, Currency: "usd", UIMode: "hosted",
+		RequestBodyHash: "wh-hash",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateOrderStatus(ctx, orderID, "failed", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	payload := json.RawMessage(`{"id":"` + eventID + `"}`)
+	if err := store.InsertWebhookEvent(ctx, WebhookEvent{
+		ID: xid.New().String(), StripeEventID: eventID, EventType: "checkout.session.completed",
+		ProcessingStatus: "received", Payload: payload,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := store.ClaimWebhookEvent(ctx, eventID)
+	if err != nil || !claimed {
+		t.Fatalf("claimed=%v err=%v", claimed, err)
+	}
+
+	now := time.Now().UTC()
+	pi := "pi_test_" + xid.New().String()
+	err = store.CompleteWebhookProcessing(ctx, WebhookCompletion{
+		StripeEventID: eventID, OrderID: &orderID, NewStatus: "paid",
+		PaymentIntentID: &pi, PaidAt: &now, AllowedFrom: []string{"pending"},
+	})
+	if err == nil {
+		t.Fatal("expected error when order transition had no effect")
+	}
+}
+
 func TestIntegrationStaleWebhookReclaim(t *testing.T) {
 	store := openTestStore(t)
 	defer store.Close()

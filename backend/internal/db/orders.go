@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -160,6 +161,20 @@ func (s *Store) UpdateOrderSession(ctx context.Context, orderID, sessionID, chec
 		orderID, sessionID, nullIfEmpty(checkoutURL), nullIfEmpty(clientSecret),
 	)
 	return err
+}
+
+// UpdateOrderAccessTokenHash replaces the stored access-token hash for an order.
+func (s *Store) UpdateOrderAccessTokenHash(ctx context.Context, orderID, tokenHash string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE orders SET access_token_hash = $2, updated_at = now()
+		WHERE id = $1`, orderID, tokenHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("order %s not found", orderID)
+	}
+	return nil
 }
 
 // ClearOrderIdempotencyKey removes the idempotency key from a canceled order.
