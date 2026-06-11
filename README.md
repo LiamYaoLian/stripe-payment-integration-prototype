@@ -1,6 +1,6 @@
 # Stripe Payment Integration Prototype
 
-Go API + React frontend for one-time Stripe Checkout (hosted redirect and embedded on-site). See [PLAN.md](PLAN.md) for design details.
+Go API + React frontend for one-time Stripe Checkout (hosted redirect and embedded on-site), with email/password accounts and order history. See [PLAN.md](PLAN.md) for design details.
 
 ## Prerequisites
 
@@ -81,9 +81,15 @@ Card `4242 4242 4242 4242`, any future expiry/CVC/ZIP. More cards: [Stripe testi
 | `make k8s-validate` | Validate Kubernetes manifests |
 | `make release-build` | Build local API + web images |
 
-## Guest order history
+## Accounts & order history
 
-After checkout, open **View my orders** on the catalog or go to `/orders`. Sign in with your email plus the order ID and access token from checkout (saved in session for the current tab).
+1. **Sign up** at [/signup](http://localhost:5173/signup) or **sign in** at [/login](http://localhost:5173/login).
+2. Checkout from the catalog (hosted or embedded). After payment, the success page polls order status using a per-order `accessToken` (not your login session).
+3. Open [/orders](http://localhost:5173/orders) for order history (requires login). Orders appear when `orders.customer_id` matches your account — checkout does not set this yet, so the list may be empty until that linkage is implemented.
+
+**Dev-only account emails:** On sign-up, the API logs an email verification link. Password reset links are logged when you use [/forgot-password](http://localhost:5173/forgot-password). No SMTP is configured yet — copy the URL from the API terminal.
+
+Auth uses an httpOnly `session` cookie. The Vite dev server proxies `/api` to `:8080` with `credentials: 'include'`.
 
 ## Kubernetes
 
