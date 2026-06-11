@@ -12,85 +12,141 @@ import (
 	"github.com/rs/xid"
 )
 
-const guestSessionTTL = 24 * time.Hour
+const (
+	userSessionTTL    = 7 * 24 * time.Hour
+	minPasswordLength = 8
+)
 
-// GuestSessionResult is returned after creating a guest auth session.
-type GuestSessionResult struct {
+// UserSessionResult is returned after register or login.
+type UserSessionResult struct {
 	Token     string
 	ExpiresAt time.Time
-	Role      string
+	User      UserProfile
 }
 
-type authOrderStore interface {
-	GetOrderByID(ctx context.Context, id string) (*db.Order, error)
+// UserProfile is the public user identity.
+type UserProfile struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
 }
 
-// AuthService issues guest JWT sessions after email ownership is proven via an order access token.
+type authCustomerStore interface {
+	CreateCustomer(ctx context.Context, id, email, passwordHash string) (*db.Customer, error)
+	GetCustomerByEmail(ctx context.Context, email string) (*db.Customer, error)
+	GetCustomerByID(ctx context.Context, id string) (*db.Customer, error)
+	LinkOrdersToCustomer(ctx context.Context, customerID, email string) error
+}
+
+// AuthService handles user registration and login.
 type AuthService struct {
-	store     authOrderStore
+	store     authCustomerStore
 	jwtSecret string
 }
 
-func NewAuthService(store authOrderStore, jwtSecret string) *AuthService {
+func NewAuthService(store authCustomerStore, jwtSecret string) *AuthService {
 	return &AuthService{store: store, jwtSecret: jwtSecret}
 }
 
-// CreateGuestSession validates email, proves ownership with orderId + accessToken, then issues a guest JWT.
-func (s *AuthService) CreateGuestSession(ctx context.Context, email, orderID, accessToken string) (*GuestSessionResult, error) {
-	email = strings.TrimSpace(email)
-	orderID = strings.TrimSpace(orderID)
-	accessToken = strings.TrimSpace(accessToken)
-
-	if email == "" || orderID == "" || accessToken == "" {
-		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "email, orderId, and accessToken required"}
-	}
-	if _, err := mail.ParseAddress(email); err != nil {
-		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "email invalid"}
+// Register creates a new account and issues a user JWT.
+func (s *AuthService) Register(ctx context.Context, email, password string) (*UserSessionResult, error) {
+	email, password, err := validateCredentials(email, password)
+	if err != nil {
+		return nil, err
 	}
 	if s.jwtSecret == "" {
-		return nil, &api.AppError{Status: 503, Code: "AUTH_DISABLED", Message: "guest auth not configured"}
-	}
-	if !validGuestProofOrderID(orderID) {
-		return nil, guestAuthProofFailed()
+		return nil, &api.AppError{Status: 503, Code: "AUTH_DISABLED", Message: "auth not configured"}
 	}
 
-	order, err := s.store.GetOrderByID(ctx, orderID)
+	existing, err := s.store.GetCustomerByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
-	if !verifyGuestEmailProof(order, email, accessToken) {
-		return nil, guestAuthProofFailed()
+	if existing != nil {
+		return nil, &api.AppError{Status: 409, Code: "EMAIL_TAKEN", Message: "email already registered"}
 	}
 
-	token, expiresAt, err := auth.IssueGuestToken(s.jwtSecret, email, guestSessionTTL)
+	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return nil, err
 	}
-	return &GuestSessionResult{Token: token, ExpiresAt: expiresAt, Role: auth.RoleGuest}, nil
+
+	customer, err := s.store.CreateCustomer(ctx, xid.New().String(), email, hash)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.LinkOrdersToCustomer(ctx, customer.ID, customer.Email); err != nil {
+		return nil, err
+	}
+
+	return s.issueSession(customer)
 }
 
-func validGuestProofOrderID(id string) bool {
-	if len(id) != 20 {
-		return false
+// Login verifies credentials and issues a user JWT.
+func (s *AuthService) Login(ctx context.Context, email, password string) (*UserSessionResult, error) {
+	email, password, err := validateCredentials(email, password)
+	if err != nil {
+		return nil, err
 	}
-	_, err := xid.FromString(id)
-	return err == nil
+	if s.jwtSecret == "" {
+		return nil, &api.AppError{Status: 503, Code: "AUTH_DISABLED", Message: "auth not configured"}
+	}
+
+	customer, err := s.store.GetCustomerByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if customer == nil || !auth.CheckPassword(customer.PasswordHash, password) {
+		return nil, invalidCredentials()
+	}
+	if err := s.store.LinkOrdersToCustomer(ctx, customer.ID, customer.Email); err != nil {
+		return nil, err
+	}
+
+	return s.issueSession(customer)
 }
 
-func verifyGuestEmailProof(order *db.Order, email, accessToken string) bool {
-	if order == nil || order.CustomerEmail == nil {
-		return false
+// GetUser returns the profile for an authenticated customer ID.
+func (s *AuthService) GetUser(ctx context.Context, customerID string) (*UserProfile, error) {
+	if customerID == "" {
+		return nil, &api.AppError{Status: 401, Code: "UNAUTHORIZED", Message: "user session required"}
 	}
-	if !strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(*order.CustomerEmail)) {
-		return false
+	customer, err := s.store.GetCustomerByID(ctx, customerID)
+	if err != nil {
+		return nil, err
 	}
-	hash := ""
-	if order.AccessTokenHash != nil {
-		hash = *order.AccessTokenHash
+	if customer == nil {
+		return nil, &api.AppError{Status: 401, Code: "UNAUTHORIZED", Message: "user not found"}
 	}
-	return auth.VerifyOrderAccessToken(accessToken, hash)
+	return &UserProfile{ID: customer.ID, Email: customer.Email}, nil
 }
 
-func guestAuthProofFailed() *api.AppError {
-	return &api.AppError{Status: 401, Code: "UNAUTHORIZED", Message: "email ownership could not be verified"}
+func (s *AuthService) issueSession(customer *db.Customer) (*UserSessionResult, error) {
+	token, expiresAt, err := auth.IssueUserToken(s.jwtSecret, customer.ID, customer.Email, userSessionTTL)
+	if err != nil {
+		return nil, err
+	}
+	return &UserSessionResult{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		User:      UserProfile{ID: customer.ID, Email: customer.Email},
+	}, nil
+}
+
+func validateCredentials(email, password string) (string, string, error) {
+	email = strings.TrimSpace(email)
+	password = strings.TrimSpace(password)
+	if email == "" || password == "" {
+		return "", "", &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "email and password required"}
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", "", &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "email invalid"}
+	}
+	if len(password) < minPasswordLength {
+		return "", "", &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "password must be at least 8 characters"}
+	}
+	return email, password, nil
+}
+
+func invalidCredentials() *api.AppError {
+	return &api.AppError{Status: 401, Code: "INVALID_CREDENTIALS", Message: "invalid email or password"}
 }

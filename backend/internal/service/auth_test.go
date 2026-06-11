@@ -11,63 +11,118 @@ import (
 	"github.com/rs/xid"
 )
 
-func TestCreateGuestSessionRequiresOrderProof(t *testing.T) {
-	store := testutil.NewFakeOrderStore()
+func TestRegisterRequiresValidInput(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
 	svc := NewAuthService(store, "test-secret")
 
-	_, err := svc.CreateGuestSession(context.Background(), "buyer@example.com", "", "")
+	_, err := svc.Register(context.Background(), "", "password123")
 	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 400 {
 		t.Fatalf("expected validation error, got %v", err)
 	}
 
-	orderID := xid.New().String()
-	_, err = svc.CreateGuestSession(context.Background(), "buyer@example.com", orderID, "token")
-	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
-		t.Fatalf("expected unauthorized for missing order, got %v", err)
+	_, err = svc.Register(context.Background(), "buyer@example.com", "short")
+	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 400 {
+		t.Fatalf("expected password validation error, got %v", err)
 	}
 }
 
-func TestCreateGuestSessionRejectsEmailMismatch(t *testing.T) {
-	store := testutil.NewFakeOrderStore()
-	token, hash, err := auth.GenerateOrderAccessToken()
+func TestRegisterRejectsDuplicateEmail(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	svc := NewAuthService(store, "test-secret")
+
+	_, err := svc.Register(context.Background(), "buyer@example.com", "password123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	email := "buyer@example.com"
-	orderID := xid.New().String()
-	store.Orders[orderID] = &db.Order{
-		ID: orderID, CustomerEmail: &email, AccessTokenHash: &hash,
-	}
-	svc := NewAuthService(store, "test-secret")
 
-	_, err = svc.CreateGuestSession(context.Background(), "other@example.com", orderID, token)
-	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
-		t.Fatalf("expected unauthorized for email mismatch, got %v", err)
+	_, err = svc.Register(context.Background(), "buyer@example.com", "otherpass1")
+	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 409 || apiErr.Code != "EMAIL_TAKEN" {
+		t.Fatalf("expected email taken, got %v", err)
 	}
 }
 
-func TestCreateGuestSessionSuccess(t *testing.T) {
-	store := testutil.NewFakeOrderStore()
-	token, hash, err := auth.GenerateOrderAccessToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestRegisterSuccess(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
 	email := "buyer@example.com"
-	orderID := xid.New().String()
-	store.Orders[orderID] = &db.Order{
-		ID: orderID, CustomerEmail: &email, AccessTokenHash: &hash,
+	store.Orders["ord_1"] = &db.Order{
+		ID: "ord_1", CustomerEmail: &email,
 	}
 	svc := NewAuthService(store, "test-secret")
 
-	result, err := svc.CreateGuestSession(context.Background(), email, orderID, token)
+	result, err := svc.Register(context.Background(), email, "password123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Token == "" || result.Role != auth.RoleGuest {
+	if result.Token == "" || result.User.Email != email {
 		t.Fatalf("result %+v", result)
 	}
-	claims, err := auth.VerifyGuestToken("test-secret", result.Token)
+	if store.Orders["ord_1"].CustomerID == nil || *store.Orders["ord_1"].CustomerID != result.User.ID {
+		t.Fatal("expected order linked to new customer")
+	}
+
+	claims, err := auth.VerifyUserToken("test-secret", result.Token)
 	if err != nil || claims.Email != email {
 		t.Fatalf("claims %+v err=%v", claims, err)
+	}
+}
+
+func TestLoginInvalidCredentials(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	svc := NewAuthService(store, "test-secret")
+
+	_, err := svc.Login(context.Background(), "missing@example.com", "password123")
+	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
+		t.Fatalf("expected unauthorized, got %v", err)
+	}
+
+	_, err = svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.Login(context.Background(), "buyer@example.com", "wrongpass1")
+	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
+		t.Fatalf("expected unauthorized, got %v", err)
+	}
+}
+
+func TestLoginSuccess(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	svc := NewAuthService(store, "test-secret")
+
+	_, err := svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := svc.Login(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Token == "" {
+		t.Fatal("expected token")
+	}
+}
+
+func TestGetUser(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	svc := NewAuthService(store, "test-secret")
+
+	result, err := svc.Register(context.Background(), "buyer@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := svc.GetUser(context.Background(), result.User.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Email != "buyer@example.com" {
+		t.Fatalf("user %+v", user)
+	}
+
+	_, err = svc.GetUser(context.Background(), xid.New().String())
+	if apiErr, ok := err.(*api.AppError); !ok || apiErr.Status != 401 {
+		t.Fatalf("expected unauthorized, got %v", err)
 	}
 }

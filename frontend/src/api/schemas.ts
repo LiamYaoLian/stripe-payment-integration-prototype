@@ -34,6 +34,17 @@ export const orderSchema = z.object({
   items: z.array(orderItemSchema),
 })
 
+export const userProfileSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+})
+
+export const authSessionSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+  user: userProfileSchema,
+})
+
 export const checkoutSessionResultSchema = z
   .object({
     orderId: z.string(),

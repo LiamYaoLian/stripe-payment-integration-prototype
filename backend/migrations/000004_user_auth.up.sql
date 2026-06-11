@@ -1,0 +1,3 @@
+ALTER TABLE customers ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE customers ALTER COLUMN password_hash DROP DEFAULT;

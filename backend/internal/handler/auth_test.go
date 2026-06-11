@@ -8,45 +8,90 @@ import (
 	"testing"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/middleware"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
-	"github.com/rs/xid"
 )
 
-func TestAuthCreateGuestSession(t *testing.T) {
-	store := testutil.NewFakeOrderStore()
-	accessToken, hash, err := auth.GenerateOrderAccessToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	email := "buyer@example.com"
-	orderID := xid.New().String()
-	store.Orders[orderID] = &db.Order{
-		ID: orderID, CustomerEmail: &email, AccessTokenHash: &hash,
-	}
+func TestAuthRegisterAndMe(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	authSvc := service.NewAuthService(store, "test-jwt-secret")
+	h := NewAuthHandler(authSvc)
 
-	h := NewAuthHandler(service.NewAuthService(store, "test-jwt-secret"))
 	body, _ := json.Marshal(map[string]string{
-		"email": email, "orderId": orderID, "accessToken": accessToken,
+		"email": "buyer@example.com", "password": "password123",
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/session", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	h.CreateSession(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	h.Register(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register status %d body=%s", rec.Code, rec.Body.String())
 	}
-	var env struct {
+
+	var registerEnv struct {
 		Data struct {
 			Token string `json:"token"`
-			Role  string `json:"role"`
+			User  struct {
+				ID    string `json:"id"`
+				Email string `json:"email"`
+			} `json:"user"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&env); err != nil {
+	if err := json.NewDecoder(rec.Body).Decode(&registerEnv); err != nil {
 		t.Fatal(err)
 	}
-	if env.Data.Token == "" || env.Data.Role != "guest" {
-		t.Fatalf("data %+v", env.Data)
+	if registerEnv.Data.Token == "" || registerEnv.Data.User.Email != "buyer@example.com" {
+		t.Fatalf("data %+v", registerEnv.Data)
+	}
+
+	meHandler := middleware.RequireUserJWT("test-jwt-secret")(http.HandlerFunc(h.Me))
+	meRec := httptest.NewRecorder()
+	meReq := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+registerEnv.Data.Token)
+	meHandler.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("me status %d body=%s", meRec.Code, meRec.Body.String())
+	}
+}
+
+func TestAuthLogin(t *testing.T) {
+	store := testutil.NewFakeCustomerStore()
+	authSvc := service.NewAuthService(store, "test-jwt-secret")
+	h := NewAuthHandler(authSvc)
+
+	registerBody, _ := json.Marshal(map[string]string{
+		"email": "buyer@example.com", "password": "password123",
+	})
+	registerRec := httptest.NewRecorder()
+	registerReq := httptest.NewRequest(http.MethodPost, "/api/auth/register", bytes.NewReader(registerBody))
+	registerReq.Header.Set("Content-Type", "application/json")
+	h.Register(registerRec, registerReq)
+	if registerRec.Code != http.StatusCreated {
+		t.Fatalf("register status %d", registerRec.Code)
+	}
+
+	loginBody, _ := json.Marshal(map[string]string{
+		"email": "buyer@example.com", "password": "password123",
+	})
+	loginRec := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	h.Login(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status %d body=%s", loginRec.Code, loginRec.Body.String())
+	}
+
+	var loginEnv struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(loginRec.Body).Decode(&loginEnv); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := auth.VerifyUserToken("test-jwt-secret", loginEnv.Data.Token)
+	if err != nil || claims.Email != "buyer@example.com" {
+		t.Fatalf("claims %+v err=%v", claims, err)
 	}
 }

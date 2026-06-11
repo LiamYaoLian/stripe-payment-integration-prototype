@@ -34,6 +34,7 @@ type Order struct {
 	Status                  string
 	TotalAmountCents        int32
 	Currency                string
+	CustomerID              *string
 	CustomerEmail           *string
 	StripeCheckoutSessionID *string
 	StripePaymentIntentID   *string

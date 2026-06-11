@@ -8,23 +8,24 @@ import (
 )
 
 const (
-	RoleGuest = "guest"
+	RoleUser = "user"
 )
 
-// GuestClaims is the JWT payload for email-scoped guest sessions.
-type GuestClaims struct {
+// UserClaims is the JWT payload for authenticated user sessions.
+type UserClaims struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-// IssueGuestToken signs a short-lived guest session JWT.
-func IssueGuestToken(secret, email string, ttl time.Duration) (token string, expiresAt time.Time, err error) {
+// IssueUserToken signs a user session JWT.
+func IssueUserToken(secret, customerID, email string, ttl time.Duration) (token string, expiresAt time.Time, err error) {
 	expiresAt = time.Now().UTC().Add(ttl)
-	claims := GuestClaims{
+	claims := UserClaims{
 		Email: email,
-		Role:  RoleGuest,
+		Role:  RoleUser,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   customerID,
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
 		},
@@ -36,9 +37,9 @@ func IssueGuestToken(secret, email string, ttl time.Duration) (token string, exp
 	return signed, expiresAt, nil
 }
 
-// VerifyGuestToken validates a guest JWT and returns its claims.
-func VerifyGuestToken(secret, token string) (*GuestClaims, error) {
-	parsed, err := jwt.ParseWithClaims(token, &GuestClaims{}, func(t *jwt.Token) (any, error) {
+// VerifyUserToken validates a user JWT and returns its claims.
+func VerifyUserToken(secret, token string) (*UserClaims, error) {
+	parsed, err := jwt.ParseWithClaims(token, &UserClaims{}, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
@@ -47,9 +48,9 @@ func VerifyGuestToken(secret, token string) (*GuestClaims, error) {
 	if err != nil {
 		return nil, err
 	}
-	claims, ok := parsed.Claims.(*GuestClaims)
-	if !ok || !parsed.Valid || claims.Role != RoleGuest || claims.Email == "" {
-		return nil, fmt.Errorf("invalid guest token")
+	claims, ok := parsed.Claims.(*UserClaims)
+	if !ok || !parsed.Valid || claims.Role != RoleUser || claims.Email == "" || claims.Subject == "" {
+		return nil, fmt.Errorf("invalid user token")
 	}
 	return claims, nil
 }

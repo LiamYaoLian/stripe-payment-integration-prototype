@@ -17,7 +17,7 @@ type RouterDeps struct {
 	Products handler.ProductCatalog
 	Orders   handler.OrderService
 	Webhooks handler.WebhookProcessor
-	Auth     handler.GuestAuthenticator
+	Auth     handler.UserAuthenticator
 	CORSOrigin      string
 	AuthJWTSecret   string
 	MetricsEnabled     bool
@@ -67,8 +67,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 		r.Get("/api/products", productsHandler.ServeHTTP)
 
 		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimitByIP(5, time.Minute))
+			r.Post("/api/auth/register", authHandler.Register)
+		})
+
+		r.Group(func(r chi.Router) {
 			r.Use(middleware.RateLimitByIP(10, time.Minute))
-			r.Post("/api/auth/session", authHandler.CreateSession)
+			r.Post("/api/auth/login", authHandler.Login)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -83,8 +88,9 @@ func NewRouter(deps RouterDeps) http.Handler {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireGuestJWT(deps.AuthJWTSecret))
+			r.Use(middleware.RequireUserJWT(deps.AuthJWTSecret))
 			r.Use(middleware.RateLimitByIP(60, time.Minute))
+			r.Get("/api/auth/me", authHandler.Me)
 			r.Get("/api/orders/mine", ordersHandler.ListMine)
 		})
 	})

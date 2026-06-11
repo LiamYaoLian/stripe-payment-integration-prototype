@@ -8,8 +8,8 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
 )
 
-// RequireGuestJWT validates Bearer guest session tokens.
-func RequireGuestJWT(secret string) func(http.Handler) http.Handler {
+// RequireUserJWT validates Bearer user session tokens.
+func RequireUserJWT(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -17,12 +17,13 @@ func RequireGuestJWT(secret string) func(http.Handler) http.Handler {
 				api.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing bearer token")
 				return
 			}
-			claims, err := auth.VerifyGuestToken(secret, strings.TrimPrefix(header, "Bearer "))
+			claims, err := auth.VerifyUserToken(secret, strings.TrimPrefix(header, "Bearer "))
 			if err != nil {
 				api.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired token")
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(auth.WithGuestEmail(r.Context(), claims.Email)))
+			session := auth.UserSession{ID: claims.Subject, Email: claims.Email}
+			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), session)))
 		})
 	}
 }

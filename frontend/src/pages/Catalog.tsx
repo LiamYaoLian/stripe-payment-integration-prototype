@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import { listProducts } from '../api/client'
 import { ErrorMessage } from '../components/ErrorMessage'
 import { LoadingMessage } from '../components/LoadingMessage'
+import { useAuth } from '../context/AuthContext'
 import { formatPrice } from '../lib/formatPrice'
 import type { Product } from '../types/api'
 
 export function Catalog() {
+  const { user, signOut } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -47,8 +49,22 @@ export function Catalog() {
     <div>
       <h1>Stripe Payment Prototype</h1>
       <p>
-        Choose a product and checkout via Hosted (redirect) or Embedded (on-site).{' '}
-        <Link to="/orders">View my orders</Link>
+        Choose a product and checkout via Hosted (redirect) or Embedded (on-site).
+      </p>
+      <p>
+        {user ? (
+          <>
+            Signed in as <strong>{user.email}</strong>.{' '}
+            <Link to="/orders">My orders</Link>{' '}
+            <button type="button" className="btn secondary" onClick={signOut}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login">Sign in</Link> or <Link to="/signup">Sign up</Link> to view your orders.
+          </>
+        )}
       </p>
       {products.map((product) => (
         <div key={product.id} className="card">

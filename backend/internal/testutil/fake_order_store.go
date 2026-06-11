@@ -181,6 +181,22 @@ func (f *FakeOrderStore) UpdateOrderSession(_ context.Context, orderID, sessionI
 	return nil
 }
 
+func (f *FakeOrderStore) ListOrdersByCustomerID(_ context.Context, customerID string, limit int) ([]db.Order, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	var orders []db.Order
+	for _, order := range f.Orders {
+		if order.CustomerID != nil && *order.CustomerID == customerID {
+			orders = append(orders, *order)
+		}
+	}
+	if len(orders) > limit {
+		orders = orders[:limit]
+	}
+	return orders, nil
+}
+
 func (f *FakeOrderStore) ListOrdersByCustomerEmail(_ context.Context, email string, limit int) ([]db.Order, error) {
 	if limit <= 0 {
 		limit = 20

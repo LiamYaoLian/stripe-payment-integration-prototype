@@ -1,13 +1,13 @@
-const GUEST_TOKEN_KEY = 'guest-session-token'
+const USER_TOKEN_KEY = 'user-session-token'
 
-export function saveGuestToken(token: string) {
-  sessionStorage.setItem(GUEST_TOKEN_KEY, token)
+export function saveUserToken(token: string) {
+  localStorage.setItem(USER_TOKEN_KEY, token)
 }
 
-export function getGuestToken(): string | null {
-  return sessionStorage.getItem(GUEST_TOKEN_KEY)
+export function getUserToken(): string | null {
+  return localStorage.getItem(USER_TOKEN_KEY)
 }
 
-export function clearGuestToken() {
-  sessionStorage.removeItem(GUEST_TOKEN_KEY)
+export function clearUserToken() {
+  localStorage.removeItem(USER_TOKEN_KEY)
 }

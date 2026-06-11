@@ -5,11 +5,14 @@ import {
 import type { CheckoutSessionResult, Order, Product } from '../types/api'
 import {
   ApiResponseError,
+  authSessionSchema,
   checkoutSessionResultSchema,
   orderSchema,
   parseApiEnvelope,
   productSchema,
+  userProfileSchema,
 } from './schemas'
+import { getUserToken } from '../lib/auth'
 import { z } from 'zod'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
@@ -104,25 +107,41 @@ export async function createCheckoutSession(
   throw new Error('checkout failed')
 }
 
-export async function createGuestSession(
+export async function register(
   email: string,
-  orderId: string,
-  accessToken: string,
-): Promise<{ token: string; expiresAt: string; role: string }> {
-  return request('/api/auth/session', z.object({
-    token: z.string(),
-    expiresAt: z.string(),
-    role: z.string(),
-  }), {
+  password: string,
+): Promise<{ token: string; expiresAt: string; user: { id: string; email: string } }> {
+  return request('/api/auth/register', authSessionSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, orderId, accessToken }),
+    body: JSON.stringify({ email, password }),
   })
 }
 
-export async function listMyOrders(guestToken: string): Promise<Order[]> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ token: string; expiresAt: string; user: { id: string; email: string } }> {
+  return request('/api/auth/login', authSessionSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export async function getMe(token: string): Promise<{ id: string; email: string }> {
+  return request('/api/auth/me', userProfileSchema, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export async function listMyOrders(token?: string): Promise<Order[]> {
+  const authToken = token ?? getUserToken()
+  if (!authToken) {
+    throw new ApiError(401, 'UNAUTHORIZED', 'not signed in')
+  }
   const data = await request('/api/orders/mine', z.object({ orders: z.array(orderSchema) }), {
-    headers: { Authorization: `Bearer ${guestToken}` },
+    headers: { Authorization: `Bearer ${authToken}` },
   })
   return data.orders
 }

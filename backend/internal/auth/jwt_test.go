@@ -5,19 +5,19 @@ import (
 	"time"
 )
 
-func TestGuestJWTIssueAndVerify(t *testing.T) {
-	token, expiresAt, err := IssueGuestToken("test-secret", "buyer@example.com", time.Hour)
+func TestUserJWTIssueAndVerify(t *testing.T) {
+	token, expiresAt, err := IssueUserToken("test-secret", "cust_1", "buyer@example.com", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if expiresAt.Before(time.Now()) {
 		t.Fatal("expiresAt in the past")
 	}
-	claims, err := VerifyGuestToken("test-secret", token)
+	claims, err := VerifyUserToken("test-secret", token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.Email != "buyer@example.com" || claims.Role != RoleGuest {
+	if claims.Subject != "cust_1" || claims.Email != "buyer@example.com" || claims.Role != RoleUser {
 		t.Fatalf("claims %+v", claims)
 	}
 }

@@ -51,12 +51,12 @@ func (h *OrdersHandler) GetBySession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrdersHandler) ListMine(w http.ResponseWriter, r *http.Request) {
-	email, ok := auth.GuestEmailFromContext(r.Context())
+	session, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		api.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "guest session required")
+		api.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "user session required")
 		return
 	}
-	orders, err := h.orders.ListOrdersForGuest(r.Context(), email)
+	orders, err := h.orders.ListOrdersForUser(r.Context(), session.ID)
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

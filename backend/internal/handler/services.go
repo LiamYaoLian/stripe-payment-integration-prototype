@@ -17,7 +17,7 @@ type OrderService interface {
 	CreateCheckoutSession(ctx context.Context, idempotencyKey string, input service.CreateCheckoutInput) (*service.CheckoutResult, error)
 	GetOrder(ctx context.Context, id string, accessToken string) (*db.Order, error)
 	GetOrderBySession(ctx context.Context, sessionID string, accessToken string) (*db.Order, error)
-	ListOrdersForGuest(ctx context.Context, email string) ([]db.Order, error)
+	ListOrdersForUser(ctx context.Context, customerID string) ([]db.Order, error)
 }
 
 // WebhookProcessor handles Stripe webhook payloads.
@@ -25,7 +25,9 @@ type WebhookProcessor interface {
 	Handle(ctx context.Context, body []byte, signature string) (service.WebhookOutcome, error)
 }
 
-// GuestAuthenticator issues guest JWT sessions.
-type GuestAuthenticator interface {
-	CreateGuestSession(ctx context.Context, email, orderID, accessToken string) (*service.GuestSessionResult, error)
+// UserAuthenticator handles user registration and login.
+type UserAuthenticator interface {
+	Register(ctx context.Context, email, password string) (*service.UserSessionResult, error)
+	Login(ctx context.Context, email, password string) (*service.UserSessionResult, error)
+	GetUser(ctx context.Context, customerID string) (*service.UserProfile, error)
 }

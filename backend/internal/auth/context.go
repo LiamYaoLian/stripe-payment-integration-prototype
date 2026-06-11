@@ -2,15 +2,21 @@ package auth
 
 import "context"
 
-type guestEmailKey struct{}
+type userContextKey struct{}
 
-// WithGuestEmail stores the authenticated guest email on the context.
-func WithGuestEmail(ctx context.Context, email string) context.Context {
-	return context.WithValue(ctx, guestEmailKey{}, email)
+// UserSession holds authenticated user identity from a JWT.
+type UserSession struct {
+	ID    string
+	Email string
 }
 
-// GuestEmailFromContext returns the guest email set by JWT middleware.
-func GuestEmailFromContext(ctx context.Context) (string, bool) {
-	email, ok := ctx.Value(guestEmailKey{}).(string)
-	return email, ok && email != ""
+// WithUser stores the authenticated user on the context.
+func WithUser(ctx context.Context, session UserSession) context.Context {
+	return context.WithValue(ctx, userContextKey{}, session)
+}
+
+// UserFromContext returns the user session set by JWT middleware.
+func UserFromContext(ctx context.Context) (UserSession, bool) {
+	session, ok := ctx.Value(userContextKey{}).(UserSession)
+	return session, ok && session.ID != "" && session.Email != ""
 }

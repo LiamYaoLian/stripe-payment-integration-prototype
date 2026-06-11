@@ -29,6 +29,39 @@ func (s *Store) GetOrderByPaymentIntentID(ctx context.Context, paymentIntentID s
 		FROM orders WHERE stripe_payment_intent_id = $1`, paymentIntentID)
 }
 
+// ListOrdersByCustomerID returns recent orders for an authenticated customer.
+func (s *Store) ListOrdersByCustomerID(ctx context.Context, customerID string, limit int) ([]Order, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+orderSelectColumns+`
+		FROM orders
+		WHERE customer_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`, customerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []Order
+	for rows.Next() {
+		var order Order
+		if err := rows.Scan(
+			&order.ID, &order.OrderNumber, &order.IdempotencyKey, &order.Status, &order.TotalAmountCents, &order.Currency,
+			&order.CustomerEmail, &order.StripeCheckoutSessionID, &order.StripePaymentIntentID,
+			&order.StripeCheckoutURL, &order.StripeClientSecret, &order.UIMode,
+			&order.SuccessURL, &order.CancelURL, &order.ReturnURL, &order.Metadata, &order.PaidAt, &order.CreatedAt, &order.UpdatedAt,
+			&order.AccessTokenHash,
+		); err != nil {
+			return nil, err
+		}
+		orders = append(orders, order)
+	}
+	return orders, rows.Err()
+}
+
 // ListOrdersByCustomerEmail returns recent orders for a guest email.
 func (s *Store) ListOrdersByCustomerEmail(ctx context.Context, email string, limit int) ([]Order, error) {
 	if limit <= 0 {
