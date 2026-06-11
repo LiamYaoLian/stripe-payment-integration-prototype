@@ -25,7 +25,7 @@ func Load() (*Config, error) {
 		AppFrontendURL:    getEnv("APP_FRONTEND_URL", "http://localhost:5173"),
 		StripeSecretKey:   os.Getenv("STRIPE_SECRET_KEY"),
 		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		DatabaseURL:       getEnv("DATABASE_URL", "postgresql://stripe:stripe@localhost:5432/stripe_payment?sslmode=disable"),
+		DatabaseURL:       getEnv("DATABASE_URL", "postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable"),
 	}
 
 	if cfg.StripeSecretKey == "" {

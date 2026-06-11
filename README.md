@@ -8,7 +8,7 @@ Full-stack prototype for one-time Stripe Checkout payments: Go API, Postgres, Re
 - Go 1.22+
 - Node.js 20+
 - [Stripe CLI](https://stripe.com/docs/stripe-cli)
-- `golang-migrate` CLI (`brew install golang-migrate`)
+- Docker (also used to run DB migrations — no separate `migrate` CLI needed)
 
 ## Quick start
 

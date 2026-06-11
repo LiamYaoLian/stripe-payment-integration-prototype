@@ -1,22 +1,25 @@
 .PHONY: migrate seed run dev test sqlc
 
-DATABASE_URL ?= postgresql://stripe:stripe@localhost:5432/stripe_payment?sslmode=disable
+DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
+# host.docker.internal lets the migrate container reach Postgres on the Mac host
+MIGRATE_DATABASE_URL ?= postgresql://stripe:stripe@host.docker.internal:5434/stripe_payment?sslmode=disable
+MIGRATE = docker run --rm -v "$(CURDIR)/backend/migrations:/migrations" migrate/migrate:v4.18.2
 
 migrate:
-	cd backend && migrate -path migrations -database "$(DATABASE_URL)" up
+	$(MIGRATE) -path=/migrations -database "$(MIGRATE_DATABASE_URL)" up
 
 migrate-down:
-	cd backend && migrate -path migrations -database "$(DATABASE_URL)" down 1
+	$(MIGRATE) -path=/migrations -database "$(MIGRATE_DATABASE_URL)" down 1
 
 seed:
-	cd backend && go run ./cmd/seed
+	cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/seed
 
 run:
-	cd backend && go run ./cmd/server
+	cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server
 
 dev:
 	@echo "Starting backend (:8080) and frontend (:5173)..."
-	@(cd backend && go run ./cmd/server) & \
+	@(cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server) & \
 	(cd frontend && npm run dev) & \
 	wait
 
