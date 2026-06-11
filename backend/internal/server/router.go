@@ -11,14 +11,23 @@ import (
 	"github.com/go-chi/cors"
 )
 
+// RouterDeps holds dependencies required to build the HTTP router.
 type RouterDeps struct {
 	Health     handler.HealthStore
+	Products   *service.ProductService
 	Orders     *service.OrderService
 	Webhooks   *service.WebhookService
 	CORSOrigin string
 }
 
+// NewRouter wires middleware and API routes.
 func NewRouter(deps RouterDeps) http.Handler {
+	healthHandler := handler.NewHealthHandlerFromStore(deps.Health)
+	productsHandler := handler.NewProductsHandler(deps.Products)
+	checkoutHandler := handler.NewCheckoutHandler(deps.Orders)
+	ordersHandler := handler.NewOrdersHandler(deps.Orders)
+	webhooksHandler := handler.NewWebhooksHandler(deps.Webhooks)
+
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
@@ -31,13 +40,12 @@ func NewRouter(deps RouterDeps) http.Handler {
 		MaxAge:           300,
 	}))
 
-	r.Get("/health", handler.NewHealthHandlerFromStore(deps.Health).ServeHTTP)
-	r.Get("/api/products", handler.NewProductsHandler(deps.Orders).ServeHTTP)
-	r.Post("/api/checkout/sessions", handler.NewCheckoutHandler(deps.Orders).ServeHTTP)
-	orders := handler.NewOrdersHandler(deps.Orders)
-	r.Get("/api/orders/{id}", orders.GetByID)
-	r.Get("/api/orders/by-session/{sessionId}", orders.GetBySession)
-	r.Post("/api/webhooks/stripe", handler.NewWebhooksHandler(deps.Webhooks).ServeHTTP)
+	r.Get("/health", healthHandler.ServeHTTP)
+	r.Get("/api/products", productsHandler.ServeHTTP)
+	r.Post("/api/checkout/sessions", checkoutHandler.ServeHTTP)
+	r.Get("/api/orders/{id}", ordersHandler.GetByID)
+	r.Get("/api/orders/by-session/{sessionId}", ordersHandler.GetBySession)
+	r.Post("/api/webhooks/stripe", webhooksHandler.ServeHTTP)
 
 	return r
 }

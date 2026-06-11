@@ -6,12 +6,15 @@ import (
 	"github.com/stripe/stripe-go/v82"
 )
 
-func TestNewSetsAPIKey(t *testing.T) {
-	prev := stripe.Key
-	t.Cleanup(func() { stripe.Key = prev })
+func TestClientRestoresGlobalAPIKey(t *testing.T) {
+	previous := stripe.Key
+	stripe.Key = "sk_test_previous"
+	t.Cleanup(func() { stripe.Key = previous })
 
-	New("sk_test_example")
-	if stripe.Key != "sk_test_example" {
-		t.Fatalf("key %q", stripe.Key)
+	client := New("sk_test_example")
+	_ = client.ExpireCheckoutSession("cs_invalid")
+
+	if stripe.Key != "sk_test_previous" {
+		t.Fatalf("expected restored key %q, got %q", "sk_test_previous", stripe.Key)
 	}
 }

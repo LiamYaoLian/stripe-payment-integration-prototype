@@ -2,14 +2,21 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as client from '../api/client'
-import CheckoutComplete from './CheckoutComplete'
+import * as idempotency from '../lib/idempotency'
+import type { Order } from '../types/api'
+import { CheckoutComplete } from './CheckoutComplete'
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
-  return { ...actual, getOrderBySession: vi.fn(), clearIdempotencyKey: vi.fn() }
+  return { ...actual, getOrderBySession: vi.fn() }
 })
 
-const paidOrder: client.Order = {
+vi.mock('../lib/idempotency', async () => {
+  const actual = await vi.importActual<typeof import('../lib/idempotency')>('../lib/idempotency')
+  return { ...actual, clearIdempotencyKey: vi.fn() }
+})
+
+const paidOrder: Order = {
   id: 'ord1',
   orderNumber: 'ORD-1',
   status: 'paid',
@@ -51,7 +58,7 @@ describe('CheckoutComplete', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
 
-    expect(client.clearIdempotencyKey).toHaveBeenCalledWith('prod-embed')
+    expect(idempotency.clearIdempotencyKey).toHaveBeenCalledWith('prod-embed')
     expect(screen.getByText('paid')).toBeInTheDocument()
   })
 

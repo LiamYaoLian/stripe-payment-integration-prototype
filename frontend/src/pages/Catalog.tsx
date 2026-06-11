@@ -1,40 +1,64 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listProducts, Product } from '../api/client'
+import { listProducts } from '../api/client'
+import { ErrorMessage } from '../components/ErrorMessage'
+import { LoadingMessage } from '../components/LoadingMessage'
+import { formatPrice } from '../lib/formatPrice'
+import type { Product } from '../types/api'
 
-function formatPrice(cents: number, currency: string) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
-}
-
-export default function Catalog() {
+export function Catalog() {
   const [products, setProducts] = useState<Product[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+
     listProducts()
-      .then(setProducts)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load products'))
-      .finally(() => setLoading(false))
+      .then((nextProducts) => {
+        if (!cancelled) {
+          setProducts(nextProducts)
+        }
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load products')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  if (loading) return <p>Loading products...</p>
-  if (error) return <p className="error">{error}</p>
+  if (loading) {
+    return <LoadingMessage message="Loading products..." />
+  }
+  if (error) {
+    return <ErrorMessage message={error} />
+  }
 
   return (
     <div>
       <h1>Stripe Payment Prototype</h1>
       <p>Choose a product and checkout via Hosted (redirect) or Embedded (on-site).</p>
-      {products.map((p) => (
-        <div key={p.id} className="card">
-          <h2>{p.name}</h2>
-          {p.description && <p>{p.description}</p>}
-          <p><strong>{formatPrice(p.unitAmountCents, p.currency)}</strong></p>
+      {products.map((product) => (
+        <div key={product.id} className="card">
+          <h2>{product.name}</h2>
+          {product.description && <p>{product.description}</p>}
+          <p>
+            <strong>{formatPrice(product.unitAmountCents, product.currency)}</strong>
+          </p>
           <div className="actions">
-            <Link className="btn" to={`/checkout/hosted?productId=${p.id}`}>
+            <Link className="btn" to={`/checkout/hosted?productId=${product.id}`}>
               Pay (Hosted)
             </Link>
-            <Link className="btn secondary" to={`/checkout/embedded?productId=${p.id}`}>
+            <Link className="btn secondary" to={`/checkout/embedded?productId=${product.id}`}>
               Pay (Embedded)
             </Link>
           </div>

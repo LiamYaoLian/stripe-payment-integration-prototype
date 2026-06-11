@@ -2,14 +2,15 @@ import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as client from '../api/client'
-import CheckoutSuccess from './CheckoutSuccess'
+import type { Order } from '../types/api'
+import { CheckoutSuccess } from './CheckoutSuccess'
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
   return { ...actual, getOrderBySession: vi.fn() }
 })
 
-const paidOrder: client.Order = {
+const paidOrder: Order = {
   id: 'ord1',
   orderNumber: 'ORD-1',
   status: 'paid',

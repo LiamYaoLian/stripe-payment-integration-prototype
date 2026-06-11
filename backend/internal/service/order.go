@@ -16,18 +16,21 @@ import (
 	"github.com/stripe/stripe-go/v82"
 )
 
+// CheckoutItemInput is a single line item in a checkout request.
 type CheckoutItemInput struct {
 	ProductID string `json:"productId"`
 	Quantity  int32  `json:"quantity"`
 }
 
+// CreateCheckoutInput is the request body for creating a checkout session.
 type CreateCheckoutInput struct {
-	UIMode        string            `json:"uiMode"`
+	UIMode        string              `json:"uiMode"`
 	Items         []CheckoutItemInput `json:"items"`
-	CustomerEmail string            `json:"customerEmail"`
-	Metadata      map[string]string `json:"metadata"`
+	CustomerEmail string              `json:"customerEmail"`
+	Metadata      map[string]string   `json:"metadata"`
 }
 
+// CheckoutResult is returned after a checkout session is created or replayed.
 type CheckoutResult struct {
 	OrderID      string `json:"orderId"`
 	OrderNumber  string `json:"orderNumber"`
@@ -37,7 +40,6 @@ type CheckoutResult struct {
 }
 
 type orderStore interface {
-	ListActiveProducts(ctx context.Context) ([]db.Product, error)
 	GetOrderByID(ctx context.Context, id string) (*db.Order, error)
 	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
 	GetOrderByIdempotencyKey(ctx context.Context, key string) (*db.Order, error)
@@ -53,24 +55,28 @@ type checkoutStripeClient interface {
 	ExpireCheckoutSession(sessionID string) error
 }
 
+// OrderService handles order reads and checkout session creation.
 type OrderService struct {
-	store  orderStore
-	stripe checkoutStripeClient
-	front  string
+	store        orderStore
+	stripe       checkoutStripeClient
+	frontendURL  string
 }
 
+// NewOrderService returns an OrderService backed by the given dependencies.
 func NewOrderService(store orderStore, stripe checkoutStripeClient, frontendURL string) *OrderService {
-	return &OrderService{store: store, stripe: stripe, front: strings.TrimRight(frontendURL, "/")}
+	return &OrderService{
+		store:       store,
+		stripe:      stripe,
+		frontendURL: strings.TrimRight(frontendURL, "/"),
+	}
 }
 
-func (s *OrderService) ListProducts(ctx context.Context) ([]db.Product, error) {
-	return s.store.ListActiveProducts(ctx)
-}
-
+// GetOrder returns an order by ID.
 func (s *OrderService) GetOrder(ctx context.Context, id string) (*db.Order, error) {
 	return s.store.GetOrderByID(ctx, id)
 }
 
+// GetOrderBySession returns an order by Stripe checkout session ID.
 func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string) (*db.Order, error) {
 	if !strings.HasPrefix(sessionID, "cs_") {
 		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "invalid session id"}
@@ -78,23 +84,9 @@ func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string) 
 	return s.store.GetOrderBySessionID(ctx, sessionID)
 }
 
-func canonicalBodyHash(input CreateCheckoutInput) (string, error) {
-	b, err := json.Marshal(input)
-	if err != nil {
-		return "", err
-	}
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:]), nil
-}
-
+// CreateCheckoutSession validates input, creates a pending order, and starts Stripe checkout.
 func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey string, input CreateCheckoutInput) (*CheckoutResult, error) {
-	if input.UIMode != "hosted" && input.UIMode != "embedded" {
-		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "uiMode must be hosted or embedded"}
-	}
-	if len(input.Items) == 0 {
-		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "items required"}
-	}
-	if err := validateMetadata(input.Metadata); err != nil {
+	if err := validateCheckoutInput(input); err != nil {
 		return nil, err
 	}
 
@@ -103,260 +95,95 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 		return nil, err
 	}
 
-	if idempotencyKey != "" {
-		existing, err := s.store.GetOrderByIdempotencyKey(ctx, idempotencyKey)
-		if err != nil {
-			return nil, err
-		}
-		if existing != nil {
-			existingHash := extractRequestHash(existing.Metadata)
-			if existingHash != "" && existingHash != bodyHash {
-				return nil, &api.AppError{Status: 409, Code: "IDEMPOTENCY_CONFLICT", Message: "idempotency key reused with different body"}
-			}
-			if existing.Status == "canceled" {
-				// Release the key so a new order can be created with the same Idempotency-Key.
-				if err := s.store.ClearOrderIdempotencyKey(ctx, existing.ID); err != nil {
-					return nil, err
-				}
-			} else if existing.StripeCheckoutSessionID == nil || *existing.StripeCheckoutSessionID == "" {
-				return nil, &api.AppError{Status: 409, Code: "CHECKOUT_IN_PROGRESS", Message: "checkout session creation in progress"}
-			} else {
-				return replayCheckout(existing), nil
-			}
-		}
+	if replay, err := s.resolveIdempotency(ctx, idempotencyKey, bodyHash); err != nil || replay != nil {
+		return replay, err
 	}
 
-	var currency string
-	var total int32
-	var lineItems []*stripe.CheckoutSessionLineItemParams
-	var dbItems []db.CreateOrderItemParams
-
-	for i, item := range input.Items {
-		if item.Quantity < 1 {
-			return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "quantity must be positive"}
-		}
-		product, err := s.store.GetProduct(ctx, item.ProductID)
-		if err != nil {
-			return nil, err
-		}
-		if product == nil {
-			return nil, &api.AppError{Status: 404, Code: "PRODUCT_NOT_FOUND", Message: fmt.Sprintf("product not found: %s", item.ProductID)}
-		}
-		if i == 0 {
-			currency = product.Currency
-		} else if product.Currency != currency {
-			return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "mixed currency not allowed"}
-		}
-		lineTotal := product.UnitAmountCents * item.Quantity
-		total += lineTotal
-
-		desc := ""
-		if product.Description != nil {
-			desc = *product.Description
-		}
-		_ = desc
-
-		lineItems = append(lineItems, &stripe.CheckoutSessionLineItemParams{
-			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
-				Currency:   stripe.String(product.Currency),
-				UnitAmount: stripe.Int64(int64(product.UnitAmountCents)),
-				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-					Name: stripe.String(product.Name),
-				},
-			},
-			Quantity: stripe.Int64(int64(item.Quantity)),
-		})
-
-		dbItems = append(dbItems, db.CreateOrderItemParams{
-			ID:              xid.New().String(),
-			ProductID:       product.ID,
-			ProductName:     product.Name,
-			Quantity:        item.Quantity,
-			UnitAmountCents: product.UnitAmountCents,
-			LineTotalCents:  lineTotal,
-		})
+	lineItems, err := s.buildCheckoutLineItems(ctx, input.Items)
+	if err != nil {
+		return nil, err
 	}
 
 	orderID := xid.New().String()
 	orderNumber := generateOrderNumber(orderID)
+	urls := s.buildCheckoutURLs(input.UIMode)
 
-	var successURL, cancelURL, returnURL *string
-	if input.UIMode == "hosted" {
-		su := fmt.Sprintf("%s/checkout/success?session_id={CHECKOUT_SESSION_ID}", s.front)
-		cu := fmt.Sprintf("%s/checkout/cancel", s.front)
-		successURL = &su
-		cancelURL = &cu
-	} else {
-		ru := fmt.Sprintf("%s/checkout/complete", s.front)
-		returnURL = &ru
+	if err := s.insertPendingOrder(ctx, orderID, orderNumber, bodyHash, idempotencyKey, input, lineItems, urls); err != nil {
+		return nil, err
 	}
 
-	meta := map[string]string{}
-	for k, v := range input.Metadata {
-		meta[k] = v
-	}
-	metaBytes, _ := json.Marshal(meta)
-
-	var idemPtr *string
-	if idempotencyKey != "" {
-		idemPtr = &idempotencyKey
-	}
 	var emailPtr *string
 	if input.CustomerEmail != "" {
 		emailPtr = &input.CustomerEmail
 	}
+	params := s.buildStripeSessionParams(orderID, orderNumber, input, lineItems, urls, emailPtr)
 
-	for i := range dbItems {
-		dbItems[i].OrderID = orderID
-	}
-
-	if err := s.store.CreateOrderWithItems(ctx, db.CreateOrderParams{
-		ID: orderID, OrderNumber: orderNumber, IdempotencyKey: idemPtr,
-		TotalAmountCents: total, Currency: currency, CustomerEmail: emailPtr,
-		UIMode: input.UIMode, SuccessURL: successURL, CancelURL: cancelURL, ReturnURL: returnURL,
-		Metadata: metaBytes, RequestBodyHash: bodyHash,
-	}, dbItems); err != nil {
-		return nil, err
-	}
-
-	stripeMeta := map[string]string{"order_id": orderID, "order_number": orderNumber}
-	for k, v := range input.Metadata {
-		stripeMeta[k] = v
-	}
-
-	params := &stripe.CheckoutSessionParams{
-		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
-		UIMode:            stripe.String(input.UIMode),
-		LineItems:         lineItems,
-		ClientReferenceID: stripe.String(orderNumber),
-		Metadata:          stripeMeta,
-	}
-	if emailPtr != nil {
-		params.CustomerEmail = stripe.String(*emailPtr)
-	}
-	if input.UIMode == "hosted" {
-		params.SuccessURL = stripe.String(*successURL)
-		params.CancelURL = stripe.String(*cancelURL)
-	} else {
-		params.ReturnURL = stripe.String(*returnURL)
-	}
-
-	sess, err := s.stripe.CreateCheckoutSession(params)
+	session, err := s.stripe.CreateCheckoutSession(params)
 	if err != nil {
-		_ = s.store.CancelOrder(ctx, orderID, "stripe_api_error")
+		if cancelErr := s.store.CancelOrder(ctx, orderID, "stripe_api_error"); cancelErr != nil {
+			slog.Warn("failed to cancel order after stripe error", "order_id", orderID, "error", cancelErr)
+		}
 		slog.Error("stripe checkout session failed", "order_id", orderID, "error", err)
 		return nil, &api.AppError{Status: 502, Code: "STRIPE_ERROR", Message: "failed to create checkout session"}
 	}
 
-	checkoutURL := ""
-	clientSecret := ""
-	if sess.URL != "" {
-		checkoutURL = sess.URL
-	}
-	if sess.ClientSecret != "" {
-		clientSecret = sess.ClientSecret
-	}
-
-	var persistErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		persistErr = s.store.UpdateOrderSession(ctx, orderID, sess.ID, checkoutURL, clientSecret)
-		if persistErr == nil {
-			break
-		}
-		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
-	}
-	if persistErr != nil {
-		_ = s.stripe.ExpireCheckoutSession(sess.ID)
-		_ = s.store.CancelOrder(ctx, orderID, "persist_failed")
+	if err := s.persistSessionWithRetry(ctx, orderID, session); err != nil {
+		s.compensateFailedCheckout(ctx, orderID, session.ID)
 		return nil, &api.AppError{Status: 502, Code: "STRIPE_ERROR", Message: "failed to persist checkout session"}
 	}
 
-	result := &CheckoutResult{
-		OrderID: orderID, OrderNumber: orderNumber, SessionID: sess.ID,
+	return buildCheckoutResult(orderID, orderNumber, input.UIMode, session), nil
+}
+
+func canonicalBodyHash(input CreateCheckoutInput) (string, error) {
+	bytes, err := json.Marshal(input)
+	if err != nil {
+		return "", err
 	}
-	if input.UIMode == "hosted" {
-		result.URL = checkoutURL
-	} else {
-		result.ClientSecret = clientSecret
-	}
-	return result, nil
+	hash := sha256.Sum256(bytes)
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func generateOrderNumber(orderID string) string {
 	return fmt.Sprintf("ORD-%s-%s", time.Now().Format("20060102"), strings.ToUpper(orderID))
 }
 
-func replayCheckout(o *db.Order) *CheckoutResult {
-	r := &CheckoutResult{
-		OrderID: o.ID, OrderNumber: o.OrderNumber,
+func replayCheckout(order *db.Order) *CheckoutResult {
+	result := &CheckoutResult{
+		OrderID: order.ID, OrderNumber: order.OrderNumber,
 	}
-	if o.StripeCheckoutSessionID != nil {
-		r.SessionID = *o.StripeCheckoutSessionID
+	if order.StripeCheckoutSessionID != nil {
+		result.SessionID = *order.StripeCheckoutSessionID
 	}
-	if o.UIMode == "hosted" && o.StripeCheckoutURL != nil {
-		r.URL = *o.StripeCheckoutURL
+	if order.UIMode == "hosted" && order.StripeCheckoutURL != nil {
+		result.URL = *order.StripeCheckoutURL
 	}
-	if o.UIMode == "embedded" && o.StripeClientSecret != nil {
-		r.ClientSecret = *o.StripeClientSecret
+	if order.UIMode == "embedded" && order.StripeClientSecret != nil {
+		result.ClientSecret = *order.StripeClientSecret
 	}
-	return r
+	return result
 }
 
 func extractRequestHash(meta json.RawMessage) string {
-	var m map[string]any
-	if err := json.Unmarshal(meta, &m); err != nil {
+	var metadata map[string]any
+	if err := json.Unmarshal(meta, &metadata); err != nil {
 		return ""
 	}
-	if v, ok := m["_request_body_hash"].(string); ok {
-		return v
+	value, ok := metadata["_request_body_hash"].(string)
+	if !ok {
+		return ""
 	}
-	return ""
+	return value
 }
 
 func validateMetadata(meta map[string]string) error {
 	if len(meta) > 50 {
 		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata exceeds 50 keys"}
 	}
-	for _, v := range meta {
-		if len(v) > 500 {
+	for _, value := range meta {
+		if len(value) > 500 {
 			return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata value exceeds 500 chars"}
 		}
 	}
 	return nil
-}
-
-func OrderToResponse(o *db.Order) map[string]any {
-	items := make([]map[string]any, 0, len(o.Items))
-	for _, it := range o.Items {
-		items = append(items, map[string]any{
-			"productName":    it.ProductName,
-			"quantity":       it.Quantity,
-			"lineTotalCents": it.LineTotalCents,
-		})
-	}
-	resp := map[string]any{
-		"id":               o.ID,
-		"orderNumber":      o.OrderNumber,
-		"status":           o.Status,
-		"totalAmountCents": o.TotalAmountCents,
-		"currency":         o.Currency,
-		"items":            items,
-	}
-	if o.PaidAt != nil {
-		resp["paidAt"] = o.PaidAt.UTC().Format(time.RFC3339)
-	}
-	return resp
-}
-
-func ProductToResponse(p db.Product) map[string]any {
-	resp := map[string]any{
-		"id":              p.ID,
-		"name":            p.Name,
-		"unitAmountCents": p.UnitAmountCents,
-		"currency":        p.Currency,
-	}
-	if p.Description != nil {
-		resp["description"] = *p.Description
-	}
-	return resp
 }

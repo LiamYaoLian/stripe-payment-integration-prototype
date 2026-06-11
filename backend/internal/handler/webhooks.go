@@ -26,7 +26,7 @@ func (h *WebhooksHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sig := r.Header.Get("Stripe-Signature")
 	result, err := h.webhooks.Handle(r.Context(), body, sig)
 	if err != nil {
-		api.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeServiceError(w, err)
 		return
 	}
 	api.WriteJSON(w, result.StatusCode, result.Body)

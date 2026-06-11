@@ -15,7 +15,7 @@ import (
 func TestProductsHandlerListsProducts(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	store.Products["p1"] = db.Product{ID: "p1", Name: "Pro", UnitAmountCents: 4900, Currency: "usd", Active: true}
-	h := NewProductsHandler(service.NewOrderService(store, nil, "http://localhost:5173"))
+	h := NewProductsHandler(service.NewProductService(store))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/products", nil))
@@ -39,7 +39,7 @@ func TestProductsHandlerListsProducts(t *testing.T) {
 func TestProductsHandlerStoreError(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	store.ListActiveProductsErr = errors.New("db unavailable")
-	h := NewProductsHandler(service.NewOrderService(store, nil, "http://localhost:5173"))
+	h := NewProductsHandler(service.NewProductService(store))
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/products", nil))

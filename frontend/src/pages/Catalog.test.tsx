@@ -2,14 +2,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as client from '../api/client'
-import Catalog from './Catalog'
+import type { Product } from '../types/api'
+import { Catalog } from './Catalog'
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
   return { ...actual, listProducts: vi.fn() }
 })
 
-const products: client.Product[] = [
+const products: Product[] = [
   { id: 'p1', name: 'Pro Plan', description: 'Best value', unitAmountCents: 4900, currency: 'usd' },
 ]
 

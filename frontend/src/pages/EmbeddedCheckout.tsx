@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
-import { createCheckoutSession, getIdempotencyKey } from '../api/client'
+import { createCheckoutSession } from '../api/client'
+import { ErrorMessage } from '../components/ErrorMessage'
+import { LoadingMessage } from '../components/LoadingMessage'
+import { LAST_EMBEDDED_PRODUCT_ID_KEY } from '../constants/checkout'
+import { getIdempotencyKey } from '../lib/idempotency'
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
 
-export default function EmbeddedCheckoutPage() {
+export function EmbeddedCheckoutPage() {
   const [params] = useSearchParams()
   const productId = params.get('productId')
   const [clientSecret, setClientSecret] = useState<string | null>(null)
@@ -22,24 +26,41 @@ export default function EmbeddedCheckoutPage() {
       return
     }
 
-    sessionStorage.setItem('last-embedded-product-id', productId)
+    let cancelled = false
+    sessionStorage.setItem(LAST_EMBEDDED_PRODUCT_ID_KEY, productId)
     const idempotencyKey = getIdempotencyKey(productId)
+
     createCheckoutSession(
       { uiMode: 'embedded', items: [{ productId, quantity: 1 }] },
       idempotencyKey,
     )
       .then((result) => {
+        if (cancelled) {
+          return
+        }
         if (!result.clientSecret) {
           setError('No client secret returned')
           return
         }
         setClientSecret(result.clientSecret)
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Checkout failed'))
+      .catch((checkoutError) => {
+        if (!cancelled) {
+          setError(checkoutError instanceof Error ? checkoutError.message : 'Checkout failed')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [productId])
 
-  if (error) return <p className="error">{error}</p>
-  if (!clientSecret) return <p>Loading checkout...</p>
+  if (error) {
+    return <ErrorMessage message={error} />
+  }
+  if (!clientSecret) {
+    return <LoadingMessage message="Loading checkout..." />
+  }
 
   return (
     <div>

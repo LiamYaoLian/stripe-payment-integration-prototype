@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { clearIdempotencyKey, createCheckoutSession, getIdempotencyKey } from '../api/client'
+import { createCheckoutSession } from '../api/client'
+import { ErrorMessage } from '../components/ErrorMessage'
+import { LoadingMessage } from '../components/LoadingMessage'
+import { clearIdempotencyKey, getIdempotencyKey } from '../lib/idempotency'
 
-export default function HostedCheckout() {
+export function HostedCheckout() {
   const [params] = useSearchParams()
   const productId = params.get('productId')
   const [error, setError] = useState<string | null>(null)
@@ -13,6 +16,7 @@ export default function HostedCheckout() {
       return
     }
 
+    let cancelled = false
     const idempotencyKey = getIdempotencyKey(productId)
 
     createCheckoutSession(
@@ -20,6 +24,9 @@ export default function HostedCheckout() {
       idempotencyKey,
     )
       .then((result) => {
+        if (cancelled) {
+          return
+        }
         if (!result.url) {
           setError('No checkout URL returned')
           return
@@ -27,9 +34,19 @@ export default function HostedCheckout() {
         clearIdempotencyKey(productId)
         window.location.href = result.url
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Checkout failed'))
+      .catch((checkoutError) => {
+        if (!cancelled) {
+          setError(checkoutError instanceof Error ? checkoutError.message : 'Checkout failed')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [productId])
 
-  if (error) return <p className="error">{error}</p>
-  return <p>Redirecting to Stripe Checkout...</p>
+  if (error) {
+    return <ErrorMessage message={error} />
+  }
+  return <LoadingMessage message="Redirecting to Stripe Checkout..." />
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, clearIdempotencyKey, createCheckoutSession, getIdempotencyKey, listProducts } from './client'
+import { ApiError, createCheckoutSession, listProducts } from './client'
+import { clearIdempotencyKey, getIdempotencyKey } from '../lib/idempotency'
 
 describe('idempotency helpers', () => {
   beforeEach(() => {
@@ -46,6 +47,23 @@ describe('listProducts', () => {
     expect(products[0].name).toBe('Pro')
   })
 
+  it('throws on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(listProducts()).rejects.toThrow(/Cannot reach API/)
+  })
+})
+
+describe('createCheckoutSession', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
   it('throws ApiError on API error envelope', async () => {
     vi.stubGlobal(
       'fetch',
@@ -62,23 +80,6 @@ describe('listProducts', () => {
     await expect(
       createCheckoutSession({ uiMode: 'hosted', items: [{ productId: 'p1', quantity: 1 }] }, 'key'),
     ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT', status: 409 })
-  })
-
-  it('throws on network failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
-
-    await expect(listProducts()).rejects.toThrow(/Cannot reach API/)
-  })
-})
-
-describe('createCheckoutSession', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.restoreAllMocks()
   })
 
   it('retries on CHECKOUT_IN_PROGRESS then succeeds', async () => {
@@ -145,5 +146,6 @@ describe('ApiError', () => {
     expect(err.message).toBe('bad input')
     expect(err.code).toBe('VALIDATION_ERROR')
     expect(err.status).toBe(400)
+    expect(err.name).toBe('ApiError')
   })
 })

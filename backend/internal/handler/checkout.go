@@ -2,17 +2,18 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
+// CheckoutHandler serves POST /api/checkout/sessions.
 type CheckoutHandler struct {
 	orders *service.OrderService
 }
 
+// NewCheckoutHandler returns a handler for checkout session creation.
 func NewCheckoutHandler(orders *service.OrderService) *CheckoutHandler {
 	return &CheckoutHandler{orders: orders}
 }
@@ -27,12 +28,7 @@ func (h *CheckoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	idempotencyKey := r.Header.Get("Idempotency-Key")
 	result, err := h.orders.CreateCheckoutSession(r.Context(), idempotencyKey, input)
 	if err != nil {
-		var appErr *api.AppError
-		if errors.As(err, &appErr) {
-			api.WriteAppError(w, appErr)
-			return
-		}
-		api.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeServiceError(w, err)
 		return
 	}
 	api.WriteJSON(w, http.StatusCreated, result)

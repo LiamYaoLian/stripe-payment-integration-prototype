@@ -1,11 +1,11 @@
-import { Link } from 'react-router-dom'
+import { BackToCatalogLink } from '../components/BackToCatalogLink'
 
-export default function CheckoutCancel() {
+export function CheckoutCancel() {
   return (
     <div>
       <h1>Checkout Canceled</h1>
       <p>Your payment was not completed.</p>
-      <Link className="btn" to="/">Back to catalog</Link>
+      <BackToCatalogLink />
     </div>
   )
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
@@ -112,42 +111,6 @@ func TestCreateCheckoutSessionEmptyItems(t *testing.T) {
 	svc := NewOrderService(nil, nil, "http://localhost:5173")
 	_, err := svc.CreateCheckoutSession(t.Context(), "", CreateCheckoutInput{UIMode: "hosted"})
 	assertAppError(t, err, 400, "VALIDATION_ERROR")
-}
-
-func TestOrderToResponse(t *testing.T) {
-	paidAt := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
-	resp := OrderToResponse(&db.Order{
-		ID: "ord1", OrderNumber: "ORD-1", Status: "paid",
-		TotalAmountCents: 4900, Currency: "usd", PaidAt: &paidAt,
-		Items: []db.OrderItem{{ProductName: "Pro", Quantity: 1, LineTotalCents: 4900}},
-	})
-	if resp["orderNumber"] != "ORD-1" || resp["status"] != "paid" {
-		t.Fatalf("unexpected response: %v", resp)
-	}
-	if resp["paidAt"] != paidAt.Format(time.RFC3339) {
-		t.Fatalf("paidAt %v", resp["paidAt"])
-	}
-}
-
-func TestOrderToResponseWithoutPaidAt(t *testing.T) {
-	resp := OrderToResponse(&db.Order{
-		ID: "ord2", OrderNumber: "ORD-2", Status: "pending",
-		TotalAmountCents: 1000, Currency: "usd",
-	})
-	if _, ok := resp["paidAt"]; ok {
-		t.Fatalf("expected no paidAt, got %v", resp["paidAt"])
-	}
-}
-
-func TestProductToResponse(t *testing.T) {
-	desc := "A product"
-	resp := ProductToResponse(db.Product{
-		ID: "p1", Name: "Pro", Description: &desc,
-		UnitAmountCents: 4900, Currency: "usd",
-	})
-	if resp["id"] != "p1" || resp["description"] != desc {
-		t.Fatalf("unexpected response: %v", resp)
-	}
 }
 
 func assertAppError(t *testing.T, err error, status int, code string) {

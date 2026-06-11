@@ -32,11 +32,13 @@ func main() {
 	defer store.Close()
 
 	stripe := stripeclient.New(cfg.StripeSecretKey)
+	productSvc := service.NewProductService(store)
 	orderSvc := service.NewOrderService(store, stripe, cfg.AppFrontendURL)
 	webhookSvc := service.NewWebhookService(store, cfg.StripeWebhookSecret)
 
 	r := server.NewRouter(server.RouterDeps{
 		Health:     store,
+		Products:   productSvc,
 		Orders:     orderSvc,
 		Webhooks:   webhookSvc,
 		CORSOrigin: cfg.CORSOrigin,

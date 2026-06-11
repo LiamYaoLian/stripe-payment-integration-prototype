@@ -7,23 +7,25 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
+// ProductsHandler serves the product catalog API.
 type ProductsHandler struct {
-	orders *service.OrderService
+	products *service.ProductService
 }
 
-func NewProductsHandler(orders *service.OrderService) *ProductsHandler {
-	return &ProductsHandler{orders: orders}
+// NewProductsHandler returns a handler for GET /api/products.
+func NewProductsHandler(products *service.ProductService) *ProductsHandler {
+	return &ProductsHandler{products: products}
 }
 
 func (h *ProductsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	products, err := h.orders.ListProducts(r.Context())
+	products, err := h.products.ListProducts(r.Context())
 	if err != nil {
-		api.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		writeServiceError(w, err)
 		return
 	}
-	list := make([]map[string]any, 0, len(products))
-	for _, p := range products {
-		list = append(list, service.ProductToResponse(p))
+	list := make([]api.ProductResponse, 0, len(products))
+	for _, product := range products {
+		list = append(list, api.NewProductResponse(product))
 	}
 	api.WriteJSON(w, http.StatusOK, map[string]any{"products": list})
 }

@@ -202,13 +202,12 @@ func TestListProductsAndGetOrder(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	store.Products[testProductID] = db.Product{ID: testProductID, Name: "Pro", UnitAmountCents: 4900, Currency: "usd", Active: true}
 	store.Orders["ord1"] = &db.Order{ID: "ord1", OrderNumber: "ORD-1", Status: "paid"}
-	svc := NewOrderService(store, nil, "http://localhost:5173")
 
-	products, err := svc.ListProducts(t.Context())
+	products, err := NewProductService(store).ListProducts(t.Context())
 	if err != nil || len(products) != 1 {
 		t.Fatalf("products %v err %v", products, err)
 	}
-	order, err := svc.GetOrder(t.Context(), "ord1")
+	order, err := NewOrderService(store, nil, "http://localhost:5173").GetOrder(t.Context(), "ord1")
 	if err != nil || order.ID != "ord1" {
 		t.Fatalf("order %v err %v", order, err)
 	}
