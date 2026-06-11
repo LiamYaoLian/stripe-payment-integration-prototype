@@ -13,11 +13,11 @@ import (
 
 // CheckoutHandler serves POST /api/checkout/sessions.
 type CheckoutHandler struct {
-	orders *service.OrderService
+	orders OrderService
 }
 
 // NewCheckoutHandler returns a handler for checkout session creation.
-func NewCheckoutHandler(orders *service.OrderService) *CheckoutHandler {
+func NewCheckoutHandler(orders OrderService) *CheckoutHandler {
 	return &CheckoutHandler{orders: orders}
 }
 

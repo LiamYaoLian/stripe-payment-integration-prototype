@@ -6,7 +6,6 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/handler"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/middleware"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -14,11 +13,11 @@ import (
 
 // RouterDeps holds dependencies required to build the HTTP router.
 type RouterDeps struct {
-	Health          handler.HealthStore
-	Products        *service.ProductService
-	Orders          *service.OrderService
-	Webhooks        *service.WebhookService
-	Auth            *service.AuthService
+	Health   handler.HealthStore
+	Products handler.ProductCatalog
+	Orders   handler.OrderService
+	Webhooks handler.WebhookProcessor
+	Auth     handler.GuestAuthenticator
 	CORSOrigin      string
 	AuthJWTSecret   string
 	MetricsEnabled     bool

@@ -12,11 +12,11 @@ import (
 
 // WebhooksHandler serves POST /api/webhooks/stripe.
 type WebhooksHandler struct {
-	webhooks *service.WebhookService
+	webhooks WebhookProcessor
 }
 
 // NewWebhooksHandler returns a handler for Stripe webhooks.
-func NewWebhooksHandler(webhooks *service.WebhookService) *WebhooksHandler {
+func NewWebhooksHandler(webhooks WebhookProcessor) *WebhooksHandler {
 	return &WebhooksHandler{webhooks: webhooks}
 }
 

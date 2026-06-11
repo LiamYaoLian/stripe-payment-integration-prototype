@@ -6,15 +6,14 @@ import (
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
 // AuthHandler serves guest session endpoints.
 type AuthHandler struct {
-	auth *service.AuthService
+	auth GuestAuthenticator
 }
 
-func NewAuthHandler(auth *service.AuthService) *AuthHandler {
+func NewAuthHandler(auth GuestAuthenticator) *AuthHandler {
 	return &AuthHandler{auth: auth}
 }
 

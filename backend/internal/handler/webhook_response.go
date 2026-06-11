@@ -7,17 +7,21 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
+type webhookResponse struct {
+	Received bool `json:"received"`
+}
+
 func writeWebhookOutcome(w http.ResponseWriter, outcome service.WebhookOutcome) {
 	switch outcome {
 	case service.WebhookOutcomeInvalidSignature:
-		api.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
+		api.WriteError(w, http.StatusBadRequest, "INVALID_SIGNATURE", "invalid stripe webhook signature")
 	case service.WebhookOutcomeAcknowledged:
-		api.WriteJSON(w, http.StatusOK, map[string]bool{"received": true})
+		api.WriteJSON(w, http.StatusOK, webhookResponse{Received: true})
 	case service.WebhookOutcomeRetryLater:
-		api.WriteJSON(w, http.StatusServiceUnavailable, map[string]bool{"received": false})
+		api.WriteError(w, http.StatusServiceUnavailable, "WEBHOOK_RETRY", "webhook processing deferred")
 	case service.WebhookOutcomeProcessingFailed:
-		api.WriteJSON(w, http.StatusInternalServerError, map[string]bool{"received": false})
+		api.WriteError(w, http.StatusInternalServerError, "WEBHOOK_PROCESSING_FAILED", "webhook processing failed")
 	default:
-		api.WriteJSON(w, http.StatusInternalServerError, map[string]bool{"received": false})
+		api.WriteError(w, http.StatusInternalServerError, "WEBHOOK_PROCESSING_FAILED", "webhook processing failed")
 	}
 }

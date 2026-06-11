@@ -4,16 +4,15 @@ import (
 	"net/http"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
 // ProductsHandler serves the product catalog API.
 type ProductsHandler struct {
-	products *service.ProductService
+	products ProductCatalog
 }
 
 // NewProductsHandler returns a handler for GET /api/products.
-func NewProductsHandler(products *service.ProductService) *ProductsHandler {
+func NewProductsHandler(products ProductCatalog) *ProductsHandler {
 	return &ProductsHandler{products: products}
 }
 

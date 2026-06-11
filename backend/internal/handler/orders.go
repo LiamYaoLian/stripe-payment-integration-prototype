@@ -5,17 +5,16 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/go-chi/chi/v5"
 )
 
 // OrdersHandler serves order lookup endpoints.
 type OrdersHandler struct {
-	orders *service.OrderService
+	orders OrderService
 }
 
 // NewOrdersHandler returns a handler for order routes.
-func NewOrdersHandler(orders *service.OrderService) *OrdersHandler {
+func NewOrdersHandler(orders OrderService) *OrdersHandler {
 	return &OrdersHandler{orders: orders}
 }
 
