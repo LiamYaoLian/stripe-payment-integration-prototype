@@ -8,12 +8,13 @@ import (
 )
 
 type FakeOrderStore struct {
-	Products            map[string]db.Product
-	Orders              map[string]*db.Order
-	OrdersBySession     map[string]*db.Order
-	OrdersByIdempotency map[string]*db.Order
-	UpdateSessionErr    error
-	CancelReasons       []string
+	Products               map[string]db.Product
+	Orders                 map[string]*db.Order
+	OrdersBySession        map[string]*db.Order
+	OrdersByIdempotency    map[string]*db.Order
+	ListActiveProductsErr  error
+	UpdateSessionErr       error
+	CancelReasons          []string
 }
 
 func NewFakeOrderStore() *FakeOrderStore {
@@ -25,7 +26,14 @@ func NewFakeOrderStore() *FakeOrderStore {
 	}
 }
 
+func (f *FakeOrderStore) Ping(_ context.Context) error {
+	return nil
+}
+
 func (f *FakeOrderStore) ListActiveProducts(_ context.Context) ([]db.Product, error) {
+	if f.ListActiveProductsErr != nil {
+		return nil, f.ListActiveProductsErr
+	}
 	out := make([]db.Product, 0, len(f.Products))
 	for _, p := range f.Products {
 		if p.Active {

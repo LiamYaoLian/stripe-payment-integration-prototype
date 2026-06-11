@@ -129,6 +129,16 @@ func TestOrderToResponse(t *testing.T) {
 	}
 }
 
+func TestOrderToResponseWithoutPaidAt(t *testing.T) {
+	resp := OrderToResponse(&db.Order{
+		ID: "ord2", OrderNumber: "ORD-2", Status: "pending",
+		TotalAmountCents: 1000, Currency: "usd",
+	})
+	if _, ok := resp["paidAt"]; ok {
+		t.Fatalf("expected no paidAt, got %v", resp["paidAt"])
+	}
+}
+
 func TestProductToResponse(t *testing.T) {
 	desc := "A product"
 	resp := ProductToResponse(db.Product{

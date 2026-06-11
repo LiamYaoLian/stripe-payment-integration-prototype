@@ -8,15 +8,19 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 )
 
-type healthStore interface {
+type HealthStore interface {
 	Ping(ctx context.Context) error
 }
 
 type HealthHandler struct {
-	store healthStore
+	store HealthStore
 }
 
 func NewHealthHandler(store *db.Store) *HealthHandler {
+	return &HealthHandler{store: store}
+}
+
+func NewHealthHandlerFromStore(store HealthStore) *HealthHandler {
 	return &HealthHandler{store: store}
 }
 

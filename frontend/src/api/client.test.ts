@@ -71,6 +71,74 @@ describe('listProducts', () => {
   })
 })
 
+describe('createCheckoutSession', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('retries on CHECKOUT_IN_PROGRESS then succeeds', async () => {
+    const success = {
+      orderId: 'ord1',
+      orderNumber: 'ORD-1',
+      sessionId: 'cs_test',
+      url: 'https://checkout.stripe.com/test',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          data: null,
+          error: { code: 'CHECKOUT_IN_PROGRESS', message: 'wait' },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: success, error: null }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const promise = createCheckoutSession(
+      { uiMode: 'hosted', items: [{ productId: 'p1', quantity: 1 }] },
+      'idem-key',
+    )
+    await vi.advanceTimersByTimeAsync(500)
+    const result = await promise
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result).toEqual(success)
+  })
+
+  it('stops retrying after max attempts on CHECKOUT_IN_PROGRESS', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        data: null,
+        error: { code: 'CHECKOUT_IN_PROGRESS', message: 'wait' },
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const promise = createCheckoutSession(
+      { uiMode: 'hosted', items: [{ productId: 'p1', quantity: 1 }] },
+      'idem-key',
+    )
+    const assertion = expect(promise).rejects.toMatchObject({ code: 'CHECKOUT_IN_PROGRESS' })
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(500)
+    }
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+  })
+})
+
 describe('ApiError', () => {
   it('exposes code and status', () => {
     const err = new ApiError(400, 'VALIDATION_ERROR', 'bad input')

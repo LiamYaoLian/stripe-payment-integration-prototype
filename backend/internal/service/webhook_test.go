@@ -139,6 +139,31 @@ func TestWebhookHandleSessionExpired(t *testing.T) {
 	}
 }
 
+func TestWebhookHandleCheckoutCompletedIncompleteSession(t *testing.T) {
+	payload := []byte(`{
+		"id": "evt_open",
+		"object": "event",
+		"type": "checkout.session.completed",
+		"api_version": "2026-05-27.dahlia",
+		"data": {"object": {
+			"id": "cs_test_open",
+			"object": "checkout.session",
+			"status": "open",
+			"payment_status": "unpaid"
+		}}
+	}`)
+	store := testutil.NewFakeWebhookStore()
+	store.Orders["cs_test_open"] = &db.Order{ID: "ord-open", Status: "pending"}
+	svc := NewWebhookService(store, testutil.TestWebhookSecret)
+	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	if err != nil || result.StatusCode != 200 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if len(store.StatusUpdate) != 0 {
+		t.Fatalf("expected no status updates for open session, got %v", store.StatusUpdate)
+	}
+}
+
 func TestWebhookHandleCheckoutCompletedProcessing(t *testing.T) {
 	payload := []byte(`{
 		"id": "evt_processing",

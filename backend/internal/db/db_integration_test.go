@@ -190,3 +190,68 @@ func TestIntegrationStoreCancelAndClearIdempotency(t *testing.T) {
 		t.Fatalf("expected idempotency cleared, found=%+v err=%v", found, err)
 	}
 }
+
+func TestIntegrationGetOrderByIdempotencyKey(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+	ctx := context.Background()
+
+	orderID := xid.New().String()
+	idem := "idem-lookup-" + xid.New().String()
+	t.Cleanup(func() { deleteTestOrder(ctx, store, orderID) })
+
+	err := store.CreateOrderWithItems(ctx, CreateOrderParams{
+		ID: orderID, OrderNumber: "ORD-IDEM-" + xid.New().String()[:6],
+		IdempotencyKey: &idem, TotalAmountCents: 1200, Currency: "usd", UIMode: "hosted",
+		RequestBodyHash: "hash-idem",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := store.GetOrderByIdempotencyKey(ctx, idem)
+	if err != nil || found == nil || found.ID != orderID {
+		t.Fatalf("found=%+v err=%v", found, err)
+	}
+}
+
+func TestIntegrationOrderStatusTransitions(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+	ctx := context.Background()
+
+	product := insertTestProduct(t, ctx, store)
+	orderID := xid.New().String()
+	t.Cleanup(func() { deleteTestOrder(ctx, store, orderID) })
+
+	err := store.CreateOrderWithItems(ctx, CreateOrderParams{
+		ID: orderID, OrderNumber: "ORD-STATUS-" + xid.New().String()[:6],
+		TotalAmountCents: product.UnitAmountCents, Currency: "usd", UIMode: "hosted",
+		RequestBodyHash: "status-hash",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pi := "pi_test_" + xid.New().String()
+	ok, err := store.UpdateOrderStatusIfAllowed(ctx, orderID, "processing", &pi, nil, []string{"pending"})
+	if err != nil || !ok {
+		t.Fatalf("pending->processing ok=%v err=%v", ok, err)
+	}
+
+	now := time.Now().UTC()
+	ok, err = store.UpdateOrderStatusIfAllowed(ctx, orderID, "paid", &pi, &now, []string{"pending", "processing"})
+	if err != nil || !ok {
+		t.Fatalf("processing->paid ok=%v err=%v", ok, err)
+	}
+
+	ok, err = store.UpdateOrderStatusIfAllowed(ctx, orderID, "failed", nil, nil, []string{"pending", "processing"})
+	if err != nil || ok {
+		t.Fatalf("paid order should not become failed, ok=%v err=%v", ok, err)
+	}
+
+	order, err := store.GetOrderByID(ctx, orderID)
+	if err != nil || order.Status != "paid" {
+		t.Fatalf("order status %q err=%v", order.Status, err)
+	}
+}

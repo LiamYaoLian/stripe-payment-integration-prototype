@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,5 +33,29 @@ func TestProductsHandlerListsProducts(t *testing.T) {
 	}
 	if len(env.Data.Products) != 1 || env.Data.Products[0]["name"] != "Pro" {
 		t.Fatalf("products %+v", env.Data.Products)
+	}
+}
+
+func TestProductsHandlerStoreError(t *testing.T) {
+	store := testutil.NewFakeOrderStore()
+	store.ListActiveProductsErr = errors.New("db unavailable")
+	h := NewProductsHandler(service.NewOrderService(store, nil, "http://localhost:5173"))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/products", nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Error.Code != "INTERNAL_ERROR" {
+		t.Fatalf("error %+v", env.Error)
 	}
 }

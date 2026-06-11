@@ -11,13 +11,9 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/config"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/handler"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/middleware"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/server"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/stripeclient"
-	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 )
 
 func main() {
@@ -39,25 +35,12 @@ func main() {
 	orderSvc := service.NewOrderService(store, stripe, cfg.AppFrontendURL)
 	webhookSvc := service.NewWebhookService(store, cfg.StripeWebhookSecret)
 
-	r := chi.NewRouter()
-	r.Use(chimw.Recoverer)
-	r.Use(chimw.RealIP)
-	r.Use(middleware.RequestID)
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{cfg.CORSOrigin},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type", "Idempotency-Key", "X-Request-ID"},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
-
-	r.Get("/health", handler.NewHealthHandler(store).ServeHTTP)
-	r.Get("/api/products", handler.NewProductsHandler(orderSvc).ServeHTTP)
-	r.Post("/api/checkout/sessions", handler.NewCheckoutHandler(orderSvc).ServeHTTP)
-	orders := handler.NewOrdersHandler(orderSvc)
-	r.Get("/api/orders/{id}", orders.GetByID)
-	r.Get("/api/orders/by-session/{sessionId}", orders.GetBySession)
-	r.Post("/api/webhooks/stripe", handler.NewWebhooksHandler(webhookSvc).ServeHTTP)
+	r := server.NewRouter(server.RouterDeps{
+		Health:     store,
+		Orders:     orderSvc,
+		Webhooks:   webhookSvc,
+		CORSOrigin: cfg.CORSOrigin,
+	})
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
