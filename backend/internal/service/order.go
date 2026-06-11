@@ -77,7 +77,7 @@ func NewOrderService(store orderStore, stripe checkoutStripeClient, frontendURL 
 
 // GetOrder returns an order by ID when the access token matches.
 func (s *OrderService) GetOrder(ctx context.Context, id string, accessToken string) (*db.Order, error) {
-	if strings.TrimSpace(id) == "" {
+	if !validOrderID(id) {
 		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "invalid order id"}
 	}
 	order, err := s.store.GetOrderByID(ctx, id)
@@ -109,6 +109,15 @@ func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string, 
 		return nil, err
 	}
 	return order, nil
+}
+
+func validOrderID(id string) bool {
+	id = strings.TrimSpace(id)
+	if len(id) != 20 {
+		return false
+	}
+	_, err := xid.FromString(id)
+	return err == nil
 }
 
 func verifyOrderAccess(order *db.Order, accessToken string) error {

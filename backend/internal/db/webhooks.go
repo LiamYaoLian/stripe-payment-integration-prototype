@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
@@ -89,7 +90,7 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 		}
 	}
 
-	_, err = tx.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		UPDATE webhook_events SET processing_status = $2::webhook_processing_status,
 			processed_at = now(), order_id = COALESCE($4, order_id)
 		WHERE stripe_event_id = $1 AND processing_status::text = $3`,
@@ -97,6 +98,9 @@ func (s *Store) CompleteWebhookProcessing(ctx context.Context, completion Webhoo
 	)
 	if err != nil {
 		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("webhook %s not in processing state", completion.StripeEventID)
 	}
 
 	return tx.Commit(ctx)
@@ -114,11 +118,17 @@ func (s *Store) MarkWebhookProcessed(ctx context.Context, stripeEventID string, 
 
 // FailWebhookEvent marks a processing webhook event as failed for Stripe retry.
 func (s *Store) FailWebhookEvent(ctx context.Context, stripeEventID string) error {
-	_, err := s.pool.Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE webhook_events SET processing_status = $2::webhook_processing_status
 		WHERE stripe_event_id = $1 AND processing_status::text = $3`,
 		stripeEventID, domain.WebhookStatusFailed, domain.WebhookStatusProcessing)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("webhook %s not in processing state", stripeEventID)
+	}
+	return nil
 }
 
 // MarkWebhookIgnored marks an unhandled webhook event as ignored.

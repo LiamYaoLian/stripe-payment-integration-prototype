@@ -10,22 +10,24 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/xid"
 )
 
 func TestOrdersGetByIDFound(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	token, _ := testutil.NewOrderAccessToken(t)
+	orderID := xid.New().String()
 	order := &db.Order{
-		ID: "ord1", OrderNumber: "ORD-1", Status: "paid",
+		ID: orderID, OrderNumber: "ORD-1", Status: "paid",
 		TotalAmountCents: 4900, Currency: "usd",
 	}
 	testutil.WithAccessToken(order, token)
-	store.Orders["ord1"] = order
+	store.Orders[orderID] = order
 	h := NewOrdersHandler(service.NewOrderService(store, nil, "http://localhost:5173"))
 	r := chi.NewRouter()
 	r.Get("/api/orders/{id}", h.GetByID)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/orders/ord1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/orders/"+orderID, nil)
 	req.Header.Set("X-Order-Token", token)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -44,13 +46,31 @@ func TestOrdersGetByIDFound(t *testing.T) {
 	}
 }
 
+func TestOrdersGetByIDUnauthorizedWithoutToken(t *testing.T) {
+	store := testutil.NewFakeOrderStore()
+	token, _ := testutil.NewOrderAccessToken(t)
+	orderID := xid.New().String()
+	order := &db.Order{ID: orderID, OrderNumber: "ORD-1", Status: "paid"}
+	testutil.WithAccessToken(order, token)
+	store.Orders[orderID] = order
+	h := NewOrdersHandler(service.NewOrderService(store, nil, "http://localhost:5173"))
+	r := chi.NewRouter()
+	r.Get("/api/orders/{id}", h.GetByID)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orders/"+orderID, nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestOrdersGetByIDNotFound(t *testing.T) {
 	h := NewOrdersHandler(service.NewOrderService(testutil.NewFakeOrderStore(), nil, "http://localhost:5173"))
 	r := chi.NewRouter()
 	r.Get("/api/orders/{id}", h.GetByID)
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orders/missing", nil))
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orders/"+xid.New().String(), nil))
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d", rec.Code)

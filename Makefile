@@ -1,4 +1,4 @@
-.PHONY: migrate seed run dev test test-integration test-frontend test-all lint lint-backend lint-frontend
+.PHONY: migrate seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -17,10 +17,13 @@ seed:
 run:
 	cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server
 
+up-prod:
+	docker compose -f docker-compose.prod.yml up --build -d
+
 dev:
 	@echo "Starting backend (:8080)..."
 	@(cd backend && DATABASE_URL="$(DATABASE_URL)" go run ./cmd/server) & \
-	until curl -sf http://localhost:8080/health >/dev/null 2>&1; do sleep 0.5; done; \
+	until curl -sf http://localhost:8080/health/ready >/dev/null 2>&1; do sleep 0.5; done; \
 	echo "Starting frontend (:5173)..."; \
 	(cd frontend && npm run dev) & \
 	wait

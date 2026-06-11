@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
 )
 
 // RouterDeps holds dependencies required to build the HTTP router.
@@ -49,20 +48,26 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/health/ready", healthHandler.Ready)
 	r.Get("/health", healthHandler.Ready)
 
-	r.Get("/api/products", productsHandler.ServeHTTP)
-
 	r.Group(func(r chi.Router) {
-		r.Use(httprate.LimitByIP(20, time.Minute))
-		r.Post("/api/checkout/sessions", checkoutHandler.ServeHTTP)
+		r.Use(chimw.Timeout(60 * time.Second))
+		r.Get("/api/products", productsHandler.ServeHTTP)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimitByIP(20, time.Minute))
+			r.Post("/api/checkout/sessions", checkoutHandler.ServeHTTP)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimitByIP(120, time.Minute))
+			r.Get("/api/orders/{id}", ordersHandler.GetByID)
+			r.Get("/api/orders/by-session/{sessionId}", ordersHandler.GetBySession)
+		})
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(httprate.LimitByIP(120, time.Minute))
-		r.Get("/api/orders/{id}", ordersHandler.GetByID)
-		r.Get("/api/orders/by-session/{sessionId}", ordersHandler.GetBySession)
+		r.Use(chimw.Timeout(120 * time.Second))
+		r.Post("/api/webhooks/stripe", webhooksHandler.ServeHTTP)
 	})
-
-	r.Post("/api/webhooks/stripe", webhooksHandler.ServeHTTP)
 
 	return r
 }

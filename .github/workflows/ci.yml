@@ -24,6 +24,11 @@ jobs:
       - name: Go build
         run: cd backend && go build -o /tmp/server ./cmd/server
 
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd backend && govulncheck ./...
+
       - name: Go unit tests
         run: cd backend && go test -short ./...
 
@@ -47,6 +52,8 @@ jobs:
 
       - name: Frontend build
         working-directory: frontend
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: pk_test_ci_build
         run: npm run build
 
   integration:

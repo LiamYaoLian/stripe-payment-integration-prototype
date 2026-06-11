@@ -7,6 +7,7 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
+	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
 )
 
@@ -202,16 +203,17 @@ func TestListProductsAndGetOrder(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
 	store.Products[testProductID] = db.Product{ID: testProductID, Name: "Pro", UnitAmountCents: 4900, Currency: "usd", Active: true}
 	token, _ := testutil.NewOrderAccessToken(t)
-	orderFixture := &db.Order{ID: "ord1", OrderNumber: "ORD-1", Status: "paid"}
+	orderID := xid.New().String()
+	orderFixture := &db.Order{ID: orderID, OrderNumber: "ORD-1", Status: "paid"}
 	testutil.WithAccessToken(orderFixture, token)
-	store.Orders["ord1"] = orderFixture
+	store.Orders[orderID] = orderFixture
 
 	products, err := NewProductService(store).ListProducts(t.Context())
 	if err != nil || len(products) != 1 {
 		t.Fatalf("products %v err %v", products, err)
 	}
-	order, err := NewOrderService(store, nil, "http://localhost:5173").GetOrder(t.Context(), "ord1", token)
-	if err != nil || order.ID != "ord1" {
+	order, err := NewOrderService(store, nil, "http://localhost:5173").GetOrder(t.Context(), orderID, token)
+	if err != nil || order.ID != orderID {
 		t.Fatalf("order %v err %v", order, err)
 	}
 }

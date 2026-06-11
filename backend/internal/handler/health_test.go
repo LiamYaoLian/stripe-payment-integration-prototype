@@ -1,54 +1,47 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
 )
 
-type fakeHealthStore struct {
-	err error
-}
-
-func (f *fakeHealthStore) Ping(context.Context) error { return f.err }
-
-func TestHealthHandlerConnected(t *testing.T) {
-	h := &HealthHandler{store: &fakeHealthStore{}}
+func TestHealthLiveAlwaysOK(t *testing.T) {
+	h := NewHealthHandlerFromStore(testutil.FakeHealth{Err: os.ErrDeadlineExceeded})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-
+	h.Live(rec, httptest.NewRequest(http.MethodGet, "/health/live", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	var data map[string]any
-	decodeEnvelope(t, rec, &data)
-	if data["status"] != "ok" || data["db"] != "connected" {
-		t.Fatalf("data %v", data)
-	}
 }
 
-func TestHealthHandlerDisconnected(t *testing.T) {
-	h := &HealthHandler{store: &fakeHealthStore{err: errors.New("down")}}
+func TestHealthReadyUnavailableWhenDBDown(t *testing.T) {
+	h := NewHealthHandlerFromStore(testutil.FakeHealth{Err: os.ErrDeadlineExceeded})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-
-	var data map[string]any
-	decodeEnvelope(t, rec, &data)
-	if data["db"] != "disconnected" {
-		t.Fatalf("data %v", data)
+	h.Ready(rec, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
-func decodeEnvelope(t *testing.T, rec *httptest.ResponseRecorder, data *map[string]any) {
-	t.Helper()
+func TestHealthReadyConnected(t *testing.T) {
+	h := NewHealthHandlerFromStore(testutil.FakeHealth{})
+	rec := httptest.NewRecorder()
+	h.Ready(rec, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
 	var env struct {
-		Data map[string]any `json:"data"`
+		Data map[string]string `json:"data"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&env); err != nil {
 		t.Fatal(err)
 	}
-	*data = env.Data
+	if env.Data["db"] != "connected" {
+		t.Fatalf("data %+v", env.Data)
+	}
 }

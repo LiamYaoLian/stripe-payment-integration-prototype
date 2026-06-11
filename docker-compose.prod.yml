@@ -1,0 +1,70 @@
+# Full local stack (API + web + Postgres). For real production, set ENV=production,
+# HTTPS URLs, and DATABASE_URL with TLS — see backend/.env.example.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stripe
+      POSTGRES_PASSWORD: stripe
+      POSTGRES_DB: stripe_payment
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stripe -d stripe_payment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:v4.18.2
+    volumes:
+      - ./backend/migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgresql://stripe:stripe@postgres:5432/stripe_payment?sslmode=disable
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ENV: development
+      PORT: "8080"
+      DATABASE_URL: postgresql://stripe:stripe@postgres:5432/stripe_payment?sslmode=disable
+      CORS_ORIGIN: http://localhost:8081
+      APP_FRONTEND_URL: http://localhost:8081
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:?set VITE_STRIPE_PUBLISHABLE_KEY}
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
