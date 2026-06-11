@@ -163,10 +163,10 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 |------|-------|-----|
 | Payments | A | — |
 | Security | A− | verify/reset emails dev-log only (no SMTP); no CSRF tokens beyond SameSite=Lax |
-| Reliability | B+ | Webhook retry/reclaim, probes, PDB, graceful shutdown; no multi-region or distributed limits |
-| Observability | A− | OTLP (Jaeger), log `trace_id`, metrics + Prometheus rules; no frontend trace propagation |
-| Ops | B | CI + release build, `k8s-deploy.sh`, web + ingress manifests, kubeconform; registry push & alert apply still manual |
-| Compliance | C− | `docs/COMPLIANCE.md` (PCI SAQ A, data inventory); no retention/DSR automation or legal sign-off |
+| Reliability | B+ | no multi-region |
+| Observability | A− | no frontend trace propagation |
+| Ops | B | registry push & alert apply still manual |
+| Compliance | C− | no retention/DSR automation or legal sign-off |
 
 | Scenario | OK? |
 |----------|-----|
