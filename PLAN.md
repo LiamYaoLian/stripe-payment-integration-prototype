@@ -132,7 +132,7 @@ Vite + React; dev proxy `/api` → `:8080`.
 
 Webhook signature on raw body · server-side pricing · order tokens · rate limits · CORS to `CORS_ORIGIN` · no `client_secret` on order reads · structured logs (no secrets/card data).
 
-**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault. Observability: `deploy/prometheus/*`, `deploy/grafana/dashboard.json`. Deploy: `scripts/k8s-deploy.sh`. Compliance: `docs/COMPLIANCE.md`.
+**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault. Tracing: `OTEL_EXPORTER_OTLP_ENDPOINT` + `OTEL_SERVICE_NAME`. Observability: `deploy/prometheus/*`, `deploy/grafana/dashboard.json`. Deploy: `scripts/k8s-deploy.sh`. Compliance: `docs/COMPLIANCE.md`.
 
 **Stack:** Go + chi + pgx · Postgres 16 · `golang-migrate` · `stripe-go` + `@stripe/react-stripe-js`.
 
@@ -144,20 +144,20 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 
 **v1 out:** subscriptions, Connect, Tax, refund UI, full accounts.
 
-**v2:** Stripe Price sync, real auth, disputes/reconciliation, OpenTelemetry, Playwright E2E.
+**v2:** Stripe Price sync, real auth, disputes/reconciliation, frontend trace propagation, Playwright E2E.
 
 ---
 
 ## Production readiness
 
-**~80%** payment microservice · **~58%** full platform. Money path is solid behind your own auth; platform layer (tracing, legal sign-off) has gaps.
+**~82%** payment microservice · **~60%** full platform. Money path is solid behind your own auth; platform layer (frontend traces, legal sign-off) has gaps.
 
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
 | Security | A− | Order-token proof for guest JWT; no magic-link email verify |
 | Reliability | B+ | 2-replica K8s, probes, PDB, graceful shutdown; no multi-region |
-| Observability | B+ | Metrics, alerts, ServiceMonitor, Grafana dashboard; no distributed tracing |
+| Observability | A− | OTLP tracing (Jaeger), log correlation, metrics + alerts; no frontend traces |
 | Ops | B+ | CI + release workflow, `k8s-deploy.sh`, kubeconform; wire your registry |
 | Compliance | C− | `docs/COMPLIANCE.md` (PCI SAQ A scope, data inventory); no legal sign-off |
 

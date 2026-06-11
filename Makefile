@@ -1,4 +1,4 @@
-.PHONY: migrate migrate-release seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend k8s-validate release-build
+.PHONY: migrate migrate-release seed run dev up-prod observability-up test test-integration test-frontend test-all lint lint-backend lint-frontend k8s-validate release-build
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -22,6 +22,10 @@ run:
 
 up-prod:
 	docker compose -f docker-compose.prod.yml up --build -d
+
+observability-up:
+	docker compose -f docker-compose.observability.yml up -d
+	@echo "Jaeger UI: http://localhost:16686 — set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
 
 dev:
 	@echo "Starting backend (:8080)..."

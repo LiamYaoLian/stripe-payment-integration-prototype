@@ -14,6 +14,7 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/server"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/stripeclient"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/telemetry"
 )
 
 func main() {
@@ -25,6 +26,16 @@ func main() {
 	setupLogging(cfg.Env)
 
 	ctx := context.Background()
+	shutdownTracing, err := telemetry.Setup(ctx, telemetry.Config{
+		ServiceName: cfg.OtelServiceName,
+		Endpoint:    cfg.OtelExporterOTLPEndpoint,
+		Environment: cfg.Env,
+	})
+	if err != nil {
+		slog.Error("tracing setup failed", "error", err)
+		os.Exit(1)
+	}
+
 	store, err := db.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("db connect failed", "error", err)
@@ -45,16 +56,22 @@ func main() {
 	)
 	authSvc := service.NewAuthService(store, cfg.AuthJWTSecret)
 
+	tracingServiceName := ""
+	if cfg.OtelExporterOTLPEndpoint != "" {
+		tracingServiceName = cfg.OtelServiceName
+	}
+
 	r := server.NewRouter(server.RouterDeps{
-		Health:         store,
-		Products:       productSvc,
-		Orders:         orderSvc,
-		Webhooks:       webhookSvc,
-		Auth:           authSvc,
-		CORSOrigin:     cfg.CORSOrigin,
-		AuthJWTSecret:  cfg.AuthJWTSecret,
-		MetricsEnabled: cfg.MetricsEnabled,
-		MetricsAPIKey:  cfg.MetricsAPIKey,
+		Health:             store,
+		Products:           productSvc,
+		Orders:             orderSvc,
+		Webhooks:           webhookSvc,
+		Auth:               authSvc,
+		CORSOrigin:         cfg.CORSOrigin,
+		AuthJWTSecret:      cfg.AuthJWTSecret,
+		MetricsEnabled:     cfg.MetricsEnabled,
+		MetricsAPIKey:      cfg.MetricsAPIKey,
+		TracingServiceName: tracingServiceName,
 	})
 
 	srv := &http.Server{
@@ -72,6 +89,7 @@ func main() {
 			"env", cfg.Env,
 			"stripe_api_version", cfg.StripeAPIVersion,
 			"metrics_enabled", cfg.MetricsEnabled,
+			"tracing_enabled", cfg.OtelExporterOTLPEndpoint != "",
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server failed", "error", err)
@@ -87,6 +105,9 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown failed", "error", err)
+	}
+	if err := shutdownTracing(shutdownCtx); err != nil {
+		slog.Warn("tracing shutdown failed", "error", err)
 	}
 	slog.Info("server stopped")
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
@@ -63,6 +64,14 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 		slog.Warn("webhook signature verification failed", "error", err)
 		return WebhookOutcomeInvalidSignature, nil
 	}
+
+	ctx, span := telemetry.Start(ctx, "webhook.process")
+	defer span.End()
+	span.SetAttributes(
+		telemetry.StringAttr("stripe.event_id", event.ID),
+		telemetry.StringAttr("stripe.event_type", string(event.Type)),
+	)
+
 	if s.expectedStripeAPIVersion != "" && event.APIVersion != "" && event.APIVersion != s.expectedStripeAPIVersion {
 		slog.Warn("stripe webhook api_version mismatch",
 			"expected", s.expectedStripeAPIVersion,

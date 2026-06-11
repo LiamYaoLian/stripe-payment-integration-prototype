@@ -21,8 +21,9 @@ type RouterDeps struct {
 	Auth            *service.AuthService
 	CORSOrigin      string
 	AuthJWTSecret   string
-	MetricsEnabled  bool
-	MetricsAPIKey   string
+	MetricsEnabled     bool
+	MetricsAPIKey      string
+	TracingServiceName string
 }
 
 // NewRouter wires middleware and API routes.
@@ -38,6 +39,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
+	r.Use(middleware.Tracing(deps.TracingServiceName))
 	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.RequestID)
 	if deps.MetricsEnabled {
@@ -48,7 +50,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{deps.CORSOrigin},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-API-Key", "X-Order-Token", "X-Request-ID"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "Traceparent", "Tracestate", "X-API-Key", "X-Order-Token", "X-Request-ID"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))

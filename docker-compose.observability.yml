@@ -1,0 +1,11 @@
+# Local tracing stack. Start with: docker compose -f docker-compose.observability.yml up -d
+# Then set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 in backend/.env
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.64
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318"   # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"

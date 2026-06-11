@@ -24,6 +24,8 @@ type Config struct {
 	MetricsEnabled                 bool
 	MetricsAPIKey                  string
 	IgnoreStripeAPIVersionMismatch bool
+	OtelExporterOTLPEndpoint       string
+	OtelServiceName                string
 }
 
 // Load reads configuration from the environment.
@@ -46,6 +48,8 @@ func Load() (*Config, error) {
 		MetricsEnabled:                 getEnv("METRICS_ENABLED", "true") == "true",
 		MetricsAPIKey:                  os.Getenv("METRICS_API_KEY"),
 		IgnoreStripeAPIVersionMismatch: env != "production",
+		OtelExporterOTLPEndpoint:       os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+		OtelServiceName:                getEnv("OTEL_SERVICE_NAME", "stripe-payment-api"),
 	}
 
 	if cfg.StripeSecretKey == "" {

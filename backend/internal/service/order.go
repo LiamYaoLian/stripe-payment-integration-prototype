@@ -14,6 +14,7 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/telemetry"
 	"github.com/rs/xid"
 	"github.com/stripe/stripe-go/v82"
 )
@@ -139,6 +140,10 @@ func verifyOrderAccess(order *db.Order, accessToken string) error {
 
 // CreateCheckoutSession validates input, creates a pending order, and starts Stripe checkout.
 func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey string, input CreateCheckoutInput) (*CheckoutResult, error) {
+	ctx, span := telemetry.Start(ctx, "checkout.create_session")
+	defer span.End()
+	span.SetAttributes(telemetry.StringAttr("checkout.ui_mode", input.UIMode))
+
 	if err := validateCheckoutInput(input); err != nil {
 		return nil, err
 	}

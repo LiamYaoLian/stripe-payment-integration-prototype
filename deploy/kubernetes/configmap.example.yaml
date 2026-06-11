@@ -7,3 +7,5 @@ data:
   CORS_ORIGIN: https://shop.example.com
   APP_FRONTEND_URL: https://shop.example.com
   METRICS_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger-collector.observability:4318
+  OTEL_SERVICE_NAME: stripe-payment-api
