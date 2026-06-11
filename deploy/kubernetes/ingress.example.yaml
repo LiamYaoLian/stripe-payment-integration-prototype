@@ -1,0 +1,25 @@
+# Copy to ingress.yaml and set your host + TLS secret.
+# Traffic hits the web service; nginx proxies /api/ to stripe-payment-api (see nginx.k8s.conf).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stripe-payment
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: shop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: stripe-payment-web
+                port:
+                  number: 80
+  # tls:
+  #   - hosts:
+  #       - shop.example.com
+  #     secretName: stripe-payment-tls

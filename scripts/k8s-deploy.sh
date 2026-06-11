@@ -31,6 +31,18 @@ kubectl apply -f "${K8S}/api-deployment.yaml"
 kubectl apply -f "${K8S}/pdb.yaml"
 kubectl rollout status deployment/stripe-payment-api --timeout=180s
 
+echo "Rolling out web..."
+kubectl apply -f "${K8S}/web-service.yaml"
+kubectl apply -f "${K8S}/web-deployment.yaml"
+kubectl rollout status deployment/stripe-payment-web --timeout=180s
+
+if [[ -f "${K8S}/ingress.yaml" ]]; then
+  echo "Applying Ingress..."
+  kubectl apply -f "${K8S}/ingress.yaml"
+else
+  echo "No ingress.yaml — copy ingress.example.yaml when ready."
+fi
+
 echo "Optional observability manifests (Prometheus Operator):"
 echo "  kubectl apply -f deploy/prometheus/servicemonitor.yaml"
 echo "  kubectl apply -f deploy/prometheus/prometheusrule.yaml"

@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -205,15 +203,6 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 	}
 
 	return buildCheckoutResult(orderID, orderNumber, input.UIMode, session, accessToken), nil
-}
-
-func canonicalBodyHash(input CreateCheckoutInput) (string, error) {
-	bytes, err := json.Marshal(input)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.Sum256(bytes)
-	return hex.EncodeToString(hash[:]), nil
 }
 
 func generateOrderNumber(orderID string) string {

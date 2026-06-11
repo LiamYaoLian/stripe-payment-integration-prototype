@@ -63,6 +63,7 @@ k8s-validate:
 release-build:
 	docker build -t stripe-payment-api:local ./backend
 	docker build \
-		--build-arg VITE_API_URL=http://localhost:8080 \
+		--build-arg VITE_API_URL= \
+		--build-arg NGINX_CONF=nginx.k8s.conf \
 		--build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_test_local \
 		-t stripe-payment-web:local ./frontend

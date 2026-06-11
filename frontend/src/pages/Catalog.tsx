@@ -46,7 +46,10 @@ export function Catalog() {
   return (
     <div>
       <h1>Stripe Payment Prototype</h1>
-      <p>Choose a product and checkout via Hosted (redirect) or Embedded (on-site).</p>
+      <p>
+        Choose a product and checkout via Hosted (redirect) or Embedded (on-site).{' '}
+        <Link to="/orders">View my orders</Link>
+      </p>
       {products.map((product) => (
         <div key={product.id} className="card">
           <h2>{product.name}</h2>

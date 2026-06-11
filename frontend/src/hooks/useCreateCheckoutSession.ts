@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createCheckoutSession } from '../api/client'
 import { getIdempotencyKey } from '../lib/idempotency'
+import { saveCheckoutContext } from '../lib/checkoutContext'
 import { saveOrderAccessToken } from '../lib/orderToken'
 import type { CheckoutSessionResult } from '../types/api'
 
@@ -35,6 +36,11 @@ export function useCreateCheckoutSession(
         if (!cancelled) {
           if (result.accessToken) {
             saveOrderAccessToken(result.sessionId, result.accessToken)
+            saveCheckoutContext({
+              orderId: result.orderId,
+              sessionId: result.sessionId,
+              accessToken: result.accessToken,
+            })
           }
           setSession(result)
           setError(null)

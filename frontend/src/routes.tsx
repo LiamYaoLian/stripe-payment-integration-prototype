@@ -5,11 +5,13 @@ import { CheckoutComplete } from './pages/CheckoutComplete'
 import { CheckoutSuccess } from './pages/CheckoutSuccess'
 import { EmbeddedCheckoutPage } from './pages/EmbeddedCheckout'
 import { HostedCheckout } from './pages/HostedCheckout'
+import { MyOrders } from './pages/MyOrders'
 
 export function AppRoutes() {
   return (
     <>
       <Route path="/" element={<Catalog />} />
+      <Route path="/orders" element={<MyOrders />} />
       <Route path="/checkout/hosted" element={<HostedCheckout />} />
       <Route path="/checkout/embedded" element={<EmbeddedCheckoutPage />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />

@@ -91,6 +91,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(chimw.Timeout(120 * time.Second))
+		r.Use(middleware.RateLimitByIP(120, time.Minute))
 		r.Post("/api/webhooks/stripe", webhooksHandler.ServeHTTP)
 	})
 

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stripe-payment-web
+  labels:
+    app: stripe-payment-web
+spec:
+  type: ClusterIP
+  selector:
+    app: stripe-payment-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

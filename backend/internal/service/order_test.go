@@ -73,6 +73,26 @@ func TestCanonicalBodyHashStable(t *testing.T) {
 	}
 }
 
+func TestCanonicalBodyHashMetadataKeyOrderIndependent(t *testing.T) {
+	base := CreateCheckoutInput{
+		UIMode: "hosted",
+		Items:  []CheckoutItemInput{{ProductID: "p1", Quantity: 1}},
+	}
+	a := base
+	a.Metadata = map[string]string{"b": "2", "a": "1"}
+	b := base
+	b.Metadata = map[string]string{"a": "1", "b": "2"}
+
+	h1, err := canonicalBodyHash(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := canonicalBodyHash(b)
+	if err != nil || h1 != h2 {
+		t.Fatalf("metadata key order changed hash: %s vs %s", h1, h2)
+	}
+}
+
 func TestExtractRequestHash(t *testing.T) {
 	meta, _ := json.Marshal(map[string]any{"_request_body_hash": "abc123"})
 	if got := extractRequestHash(meta); got != "abc123" {
