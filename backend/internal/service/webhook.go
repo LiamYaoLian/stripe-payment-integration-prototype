@@ -42,46 +42,40 @@ func NewWebhookService(store webhookStore, webhookSecret string) *WebhookService
 	return &WebhookService{store: store, webhookSecret: webhookSecret}
 }
 
-// WebhookResult carries the HTTP response for a processed webhook.
-type WebhookResult struct {
-	StatusCode int
-	Body       map[string]any
-}
-
 // Handle verifies, deduplicates, and processes a Stripe webhook payload.
-func (s *WebhookService) Handle(ctx context.Context, body []byte, signature string) (*WebhookResult, error) {
+func (s *WebhookService) Handle(ctx context.Context, body []byte, signature string) (WebhookOutcome, error) {
 	event, err := webhook.ConstructEventWithOptions(body, signature, s.webhookSecret, webhook.ConstructEventOptions{
 		IgnoreAPIVersionMismatch: true,
 	})
 	if err != nil {
 		slog.Warn("webhook signature verification failed", "error", err)
-		return &WebhookResult{StatusCode: 400, Body: map[string]any{"error": "invalid signature"}}, nil
+		return WebhookOutcomeInvalidSignature, nil
 	}
 
 	existing, err := s.store.GetWebhookEvent(ctx, event.ID)
 	if err != nil {
-		return nil, err
+		return WebhookOutcomeAcknowledged, err
 	}
 
 	if existing != nil {
 		switch existing.ProcessingStatus {
 		case domain.WebhookStatusProcessed, domain.WebhookStatusIgnored:
-			return receivedOK(), nil
+			return WebhookOutcomeAcknowledged, nil
 		case domain.WebhookStatusFailed:
 			// retry below
 		case domain.WebhookStatusReceived:
-			return receivedUnavailable(), nil
+			return WebhookOutcomeRetryLater, nil
 		}
 	} else {
 		payload, err := json.Marshal(event)
 		if err != nil {
-			return nil, fmt.Errorf("marshal webhook event: %w", err)
+			return WebhookOutcomeAcknowledged, fmt.Errorf("marshal webhook event: %w", err)
 		}
 		if err := s.store.InsertWebhookEvent(ctx, db.WebhookEvent{
 			ID: xid.New().String(), StripeEventID: event.ID, EventType: string(event.Type),
 			ProcessingStatus: domain.WebhookStatusReceived, Payload: payload,
 		}); err != nil {
-			return nil, err
+			return WebhookOutcomeAcknowledged, err
 		}
 	}
 
@@ -89,12 +83,12 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 		if err := s.store.MarkWebhookIgnored(ctx, event.ID); err != nil {
 			slog.Warn("failed to mark webhook ignored", "event_id", event.ID, "error", err)
 		}
-		return receivedOK(), nil
+		return WebhookOutcomeAcknowledged, nil
 	}
 
 	claimed, err := s.store.ClaimWebhookEvent(ctx, event.ID)
 	if err != nil {
-		return nil, err
+		return WebhookOutcomeAcknowledged, err
 	}
 	if !claimed {
 		return s.handleUnclaimedEvent(ctx, event.ID)
@@ -105,40 +99,28 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 			slog.Warn("failed to mark webhook failed", "event_id", event.ID, "error", failErr)
 		}
 		slog.Error("webhook processing failed", "event_id", event.ID, "error", err)
-		return receivedFailed(), nil
+		return WebhookOutcomeProcessingFailed, nil
 	}
 
-	return receivedOK(), nil
+	return WebhookOutcomeAcknowledged, nil
 }
 
-func (s *WebhookService) handleUnclaimedEvent(ctx context.Context, eventID string) (*WebhookResult, error) {
+func (s *WebhookService) handleUnclaimedEvent(ctx context.Context, eventID string) (WebhookOutcome, error) {
 	existing, err := s.store.GetWebhookEvent(ctx, eventID)
 	if err != nil {
-		return nil, err
+		return WebhookOutcomeAcknowledged, err
 	}
 	if existing == nil {
-		return receivedUnavailable(), nil
+		return WebhookOutcomeRetryLater, nil
 	}
 	switch existing.ProcessingStatus {
 	case domain.WebhookStatusProcessed:
-		return receivedOK(), nil
+		return WebhookOutcomeAcknowledged, nil
 	case domain.WebhookStatusFailed:
-		return receivedFailed(), nil
+		return WebhookOutcomeProcessingFailed, nil
 	default:
-		return receivedUnavailable(), nil
+		return WebhookOutcomeRetryLater, nil
 	}
-}
-
-func receivedOK() *WebhookResult {
-	return &WebhookResult{StatusCode: 200, Body: map[string]any{"received": true}}
-}
-
-func receivedUnavailable() *WebhookResult {
-	return &WebhookResult{StatusCode: 503, Body: map[string]any{"received": false}}
-}
-
-func receivedFailed() *WebhookResult {
-	return &WebhookResult{StatusCode: 500, Body: map[string]any{"received": false}}
 }
 
 func (s *WebhookService) processEvent(ctx context.Context, event stripe.Event) error {

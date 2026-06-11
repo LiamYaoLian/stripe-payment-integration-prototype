@@ -6,14 +6,25 @@ import (
 
 func TestLoadRequiresStripeSecretKey(t *testing.T) {
 	t.Setenv("STRIPE_SECRET_KEY", "")
+	t.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
 	_, err := Load()
 	if err == nil {
 		t.Fatal("expected error when STRIPE_SECRET_KEY missing")
 	}
 }
 
+func TestLoadRequiresStripeWebhookSecret(t *testing.T) {
+	t.Setenv("STRIPE_SECRET_KEY", "sk_test_x")
+	t.Setenv("STRIPE_WEBHOOK_SECRET", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when STRIPE_WEBHOOK_SECRET missing")
+	}
+}
+
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("STRIPE_SECRET_KEY", "sk_test_x")
+	t.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("PORT", "")
 	t.Setenv("CORS_ORIGIN", "")

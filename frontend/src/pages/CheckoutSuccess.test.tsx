@@ -1,33 +1,14 @@
-import { act, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { act, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as client from '../api/client'
-import type { Order } from '../types/api'
+import { paidOrder } from '../test/fixtures/orders'
+import { renderWithRouter } from '../test/renderWithRouter'
 import { CheckoutSuccess } from './CheckoutSuccess'
 
 vi.mock('../api/client', async () => {
   const actual = await vi.importActual<typeof import('../api/client')>('../api/client')
   return { ...actual, getOrderBySession: vi.fn() }
 })
-
-const paidOrder: Order = {
-  id: 'ord1',
-  orderNumber: 'ORD-1',
-  status: 'paid',
-  totalAmountCents: 4900,
-  currency: 'usd',
-  items: [{ productName: 'Pro', quantity: 1, lineTotalCents: 4900 }],
-}
-
-function renderPage(sessionId = 'cs_test_abc') {
-  return render(
-    <MemoryRouter initialEntries={[`/checkout/success?session_id=${sessionId}`]}>
-      <Routes>
-        <Route path="/checkout/success" element={<CheckoutSuccess />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
 
 describe('CheckoutSuccess', () => {
   beforeEach(() => {
@@ -44,7 +25,10 @@ describe('CheckoutSuccess', () => {
       .mockRejectedValueOnce(new Error('network'))
       .mockResolvedValueOnce(paidOrder)
 
-    renderPage()
+    renderWithRouter(<CheckoutSuccess />, {
+      path: '/checkout/success',
+      initialEntry: '/checkout/success?session_id=cs_test_abc',
+    })
     expect(screen.getByText(/Confirming payment/)).toBeInTheDocument()
 
     await act(async () => {
@@ -58,7 +42,10 @@ describe('CheckoutSuccess', () => {
   it('shows error after max retries', async () => {
     vi.mocked(client.getOrderBySession).mockRejectedValue(new Error('network'))
 
-    renderPage()
+    renderWithRouter(<CheckoutSuccess />, {
+      path: '/checkout/success',
+      initialEntry: '/checkout/success?session_id=cs_test_abc',
+    })
 
     await act(async () => {
       for (let i = 0; i < 30; i++) {

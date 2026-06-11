@@ -11,6 +11,16 @@ import (
 	"github.com/stripe/stripe-go/v82"
 )
 
+func assertWebhookOutcome(t *testing.T, outcome WebhookOutcome, err error, expected WebhookOutcome) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != expected {
+		t.Fatalf("outcome=%v want %v", outcome, expected)
+	}
+}
+
 func TestParseSessionFromFixture(t *testing.T) {
 	raw, err := os.ReadFile("../handler/testdata/checkout.session.completed.json")
 	if err != nil {
@@ -20,18 +30,18 @@ func TestParseSessionFromFixture(t *testing.T) {
 	if err := json.Unmarshal(raw, &event); err != nil {
 		t.Fatal(err)
 	}
-	sess, err := parseSession(event)
+	session, err := parseSession(event)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.ID != "cs_test_completed" {
-		t.Fatalf("unexpected session id: %s", sess.ID)
+	if session.ID != "cs_test_completed" {
+		t.Fatalf("unexpected session id: %s", session.ID)
 	}
-	if sess.Status != stripe.CheckoutSessionStatusComplete {
-		t.Fatalf("unexpected status: %s", sess.Status)
+	if session.Status != stripe.CheckoutSessionStatusComplete {
+		t.Fatalf("unexpected status: %s", session.Status)
 	}
-	if sess.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
-		t.Fatalf("unexpected payment status: %s", sess.PaymentStatus)
+	if session.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
+		t.Fatalf("unexpected payment status: %s", session.PaymentStatus)
 	}
 }
 
@@ -39,8 +49,8 @@ func TestPaymentIntentID(t *testing.T) {
 	if paymentIntentID(&stripe.CheckoutSession{}) != nil {
 		t.Fatal("expected nil")
 	}
-	sess := &stripe.CheckoutSession{PaymentIntent: &stripe.PaymentIntent{ID: "pi_123"}}
-	got := paymentIntentID(sess)
+	session := &stripe.CheckoutSession{PaymentIntent: &stripe.PaymentIntent{ID: "pi_123"}}
+	got := paymentIntentID(session)
 	if got == nil || *got != "pi_123" {
 		t.Fatalf("got %v", got)
 	}
@@ -48,10 +58,8 @@ func TestPaymentIntentID(t *testing.T) {
 
 func TestWebhookHandleInvalidSignature(t *testing.T) {
 	svc := NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), []byte(`{}`), "bad-sig")
-	if err != nil || result.StatusCode != 400 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), []byte(`{}`), "bad-sig")
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeInvalidSignature)
 }
 
 func TestWebhookHandleIgnoredEvent(t *testing.T) {
@@ -61,10 +69,8 @@ func TestWebhookHandleIgnoredEvent(t *testing.T) {
 	}
 	store := testutil.NewFakeWebhookStore()
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.Ignored) != 1 {
 		t.Fatalf("ignored %v", store.Ignored)
 	}
@@ -80,10 +86,8 @@ func TestWebhookHandleAlreadyProcessed(t *testing.T) {
 		StripeEventID: "evt_test_charge", ProcessingStatus: "processed",
 	}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 }
 
 func TestWebhookHandleInFlight(t *testing.T) {
@@ -96,10 +100,8 @@ func TestWebhookHandleInFlight(t *testing.T) {
 		StripeEventID: "evt_test_charge", ProcessingStatus: "received",
 	}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 503 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
 }
 
 func TestWebhookHandleCheckoutCompletedPaid(t *testing.T) {
@@ -110,10 +112,8 @@ func TestWebhookHandleCheckoutCompletedPaid(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord1:paid" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}
@@ -130,10 +130,8 @@ func TestWebhookHandleSessionExpired(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_expired"] = &db.Order{ID: "ord2", Status: "pending"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord2:expired" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}
@@ -155,10 +153,8 @@ func TestWebhookHandleCheckoutCompletedIncompleteSession(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_open"] = &db.Order{ID: "ord-open", Status: "pending"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 0 {
 		t.Fatalf("expected no status updates for open session, got %v", store.StatusUpdate)
 	}
@@ -181,10 +177,8 @@ func TestWebhookHandleCheckoutCompletedProcessing(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_processing"] = &db.Order{ID: "ord4", Status: "pending"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord4:processing" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}
@@ -206,10 +200,8 @@ func TestWebhookHandleAsyncSucceeded(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_async"] = &db.Order{ID: "ord_async", Status: "processing"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord_async:paid" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}
@@ -226,10 +218,8 @@ func TestWebhookHandleClaimRaceReturns503(t *testing.T) {
 	}
 	store.ClaimOK = false
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 503 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
 }
 
 func TestWebhookHandleProcessErrorReturns500(t *testing.T) {
@@ -241,10 +231,8 @@ func TestWebhookHandleProcessErrorReturns500(t *testing.T) {
 	store.Orders["cs_test_completed"] = &db.Order{ID: "ord1", Status: "pending"}
 	store.UpdateErr = errors.New("db update failed")
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 500 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
 
 func TestWebhookHandleFailedEventRetryReturns500(t *testing.T) {
@@ -258,10 +246,8 @@ func TestWebhookHandleFailedEventRetryReturns500(t *testing.T) {
 	}
 	store.ClaimOK = false
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
-	if err != nil || result.StatusCode != 500 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeProcessingFailed)
 }
 
 func TestWebhookHandleAsyncPaymentFailed(t *testing.T) {
@@ -275,10 +261,8 @@ func TestWebhookHandleAsyncPaymentFailed(t *testing.T) {
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_failed"] = &db.Order{ID: "ord3", Status: "processing"}
 	svc := NewWebhookService(store, testutil.TestWebhookSecret)
-	result, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
-	if err != nil || result.StatusCode != 200 {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
+	outcome, err := svc.Handle(t.Context(), payload, testutil.SignWebhookPayload(t, payload, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 	if len(store.StatusUpdate) != 1 || store.StatusUpdate[0] != "ord3:failed" {
 		t.Fatalf("updates %v", store.StatusUpdate)
 	}

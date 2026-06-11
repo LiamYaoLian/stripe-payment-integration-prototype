@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/config"
@@ -12,13 +12,15 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("config load failed", "error", err)
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
 	store, err := db.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("db connect failed", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
@@ -32,11 +34,11 @@ func main() {
 		{ID: "d4j8k2m9q1p7n3s8", Name: "Donation", Description: &desc3, UnitAmountCents: 500, Currency: "usd", Active: true},
 	}
 
-	for _, p := range products {
-		if err := store.UpsertProduct(ctx, p); err != nil {
-			log.Fatal(err)
+	for _, product := range products {
+		if err := store.UpsertProduct(ctx, product); err != nil {
+			slog.Error("seed product failed", "product", product.Name, "error", err)
+			os.Exit(1)
 		}
-		log.Printf("seeded product: %s (%s)", p.Name, p.ID)
+		slog.Info("seeded product", "name", product.Name, "id", product.ID)
 	}
-	os.Exit(0)
 }

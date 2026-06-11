@@ -8,10 +8,12 @@ import (
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/service"
 )
 
+// WebhooksHandler serves POST /api/webhooks/stripe.
 type WebhooksHandler struct {
 	webhooks *service.WebhookService
 }
 
+// NewWebhooksHandler returns a handler for Stripe webhooks.
 func NewWebhooksHandler(webhooks *service.WebhookService) *WebhooksHandler {
 	return &WebhooksHandler{webhooks: webhooks}
 }
@@ -23,11 +25,11 @@ func (h *WebhooksHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sig := r.Header.Get("Stripe-Signature")
-	result, err := h.webhooks.Handle(r.Context(), body, sig)
+	signature := r.Header.Get("Stripe-Signature")
+	outcome, err := h.webhooks.Handle(r.Context(), body, signature)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	api.WriteJSON(w, result.StatusCode, result.Body)
+	writeWebhookOutcome(w, outcome)
 }
