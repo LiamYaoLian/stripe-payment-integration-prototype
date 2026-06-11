@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -16,6 +17,7 @@ type ErrorBody struct {
 	Details []any  `json:"details,omitempty"`
 }
 
+// AppError is a domain error with an HTTP status and machine-readable code.
 type AppError struct {
 	Status  int
 	Code    string
@@ -37,7 +39,9 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 func WriteEnvelope(w http.ResponseWriter, status int, data any, err *ErrorBody) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(Envelope{Data: data, Error: err})
+	if encodeErr := json.NewEncoder(w).Encode(Envelope{Data: data, Error: err}); encodeErr != nil {
+		slog.Error("failed to encode JSON response", "error", encodeErr)
+	}
 }
 
 func WriteAppError(w http.ResponseWriter, err *AppError) {

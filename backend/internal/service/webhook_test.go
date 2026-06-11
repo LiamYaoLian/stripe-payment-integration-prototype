@@ -90,6 +90,20 @@ func TestWebhookHandleAlreadyProcessed(t *testing.T) {
 	assertWebhookOutcome(t, outcome, err, WebhookOutcomeAcknowledged)
 }
 
+func TestWebhookHandleProcessingInFlight(t *testing.T) {
+	raw, err := os.ReadFile("../handler/testdata/charge.succeeded.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := testutil.NewFakeWebhookStore()
+	store.Events["evt_test_charge"] = &db.WebhookEvent{
+		StripeEventID: "evt_test_charge", ProcessingStatus: "processing",
+	}
+	svc := NewWebhookService(store, testutil.TestWebhookSecret)
+	outcome, err := svc.Handle(t.Context(), raw, testutil.SignWebhookPayload(t, raw, ""))
+	assertWebhookOutcome(t, outcome, err, WebhookOutcomeRetryLater)
+}
+
 func TestWebhookHandleInFlight(t *testing.T) {
 	raw, err := os.ReadFile("../handler/testdata/charge.succeeded.json")
 	if err != nil {

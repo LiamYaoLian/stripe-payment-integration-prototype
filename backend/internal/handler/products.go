@@ -20,7 +20,7 @@ func NewProductsHandler(products *service.ProductService) *ProductsHandler {
 func (h *ProductsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	products, err := h.products.ListProducts(r.Context())
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 	list := make([]api.ProductResponse, 0, len(products))

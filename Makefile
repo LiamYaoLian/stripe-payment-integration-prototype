@@ -1,4 +1,4 @@
-.PHONY: migrate seed run dev test test-integration test-frontend test-all sqlc
+.PHONY: migrate seed run dev test test-integration test-frontend test-all lint lint-backend lint-frontend
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -39,5 +39,10 @@ test-all:
 	cd backend && go test ./...
 	cd frontend && npm test
 
-sqlc:
-	cd backend && sqlc generate
+lint: lint-backend lint-frontend
+
+lint-backend:
+	cd backend && golangci-lint run ./...
+
+lint-frontend:
+	cd frontend && npm run lint

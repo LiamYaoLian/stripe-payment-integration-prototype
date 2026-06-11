@@ -10,14 +10,14 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	databaseURL, err := config.LoadSeed()
 	if err != nil {
 		slog.Error("config load failed", "error", err)
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
-	store, err := db.New(ctx, cfg.DatabaseURL)
+	store, err := db.New(ctx, databaseURL)
 	if err != nil {
 		slog.Error("db connect failed", "error", err)
 		os.Exit(1)

@@ -110,6 +110,7 @@ Both flows poll order status via `GET /api/orders/by-session/:sessionId` after p
 | `make test-integration` | DB integration tests (requires Postgres on `:5434`) |
 | `make test-frontend` | Frontend Vitest only |
 | `make test-all` | All Go tests + frontend (includes integration) |
+| `make lint` | Run golangci-lint + ESLint |
 
 ## Testing
 
@@ -128,6 +129,9 @@ make test-all
 - **Go unit tests** — service/handler logic with fakes in `internal/testutil`
 - **Go integration tests** — `internal/db` against Postgres; skipped with `-short`
 - **Frontend tests** — Vitest + Testing Library (`frontend/src/**/*.test.ts(x)`)
+- **CI** — GitHub Actions runs lint, unit tests, and DB integration tests on push/PR
+
+Run `make migrate` after pulling to apply new migrations (e.g. webhook `processing` status).
 
 ## Project layout
 

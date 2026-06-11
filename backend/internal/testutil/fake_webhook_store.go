@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
 )
 
 type FakeWebhookStore struct {
@@ -26,22 +27,22 @@ func NewFakeWebhookStore() *FakeWebhookStore {
 }
 
 func (f *FakeWebhookStore) GetWebhookEvent(_ context.Context, stripeEventID string) (*db.WebhookEvent, error) {
-	if e, ok := f.Events[stripeEventID]; ok {
-		return e, nil
+	if event, ok := f.Events[stripeEventID]; ok {
+		return event, nil
 	}
 	return nil, nil
 }
 
-func (f *FakeWebhookStore) InsertWebhookEvent(_ context.Context, e db.WebhookEvent) error {
-	copy := e
-	f.Events[e.StripeEventID] = &copy
+func (f *FakeWebhookStore) InsertWebhookEvent(_ context.Context, event db.WebhookEvent) error {
+	copy := event
+	f.Events[event.StripeEventID] = &copy
 	return nil
 }
 
 func (f *FakeWebhookStore) MarkWebhookIgnored(_ context.Context, stripeEventID string) error {
 	f.Ignored = append(f.Ignored, stripeEventID)
-	if e, ok := f.Events[stripeEventID]; ok {
-		e.ProcessingStatus = "ignored"
+	if event, ok := f.Events[stripeEventID]; ok {
+		event.ProcessingStatus = domain.WebhookStatusIgnored
 	}
 	return nil
 }
@@ -51,22 +52,29 @@ func (f *FakeWebhookStore) ClaimWebhookEvent(_ context.Context, stripeEventID st
 	if !f.ClaimOK {
 		return false, nil
 	}
-	if e, ok := f.Events[stripeEventID]; ok {
-		e.ProcessingStatus = "processed"
+	if event, ok := f.Events[stripeEventID]; ok {
+		event.ProcessingStatus = domain.WebhookStatusProcessing
 	}
 	return true, nil
 }
 
+func (f *FakeWebhookStore) MarkWebhookProcessed(_ context.Context, stripeEventID string) error {
+	if event, ok := f.Events[stripeEventID]; ok {
+		event.ProcessingStatus = domain.WebhookStatusProcessed
+	}
+	return nil
+}
+
 func (f *FakeWebhookStore) FailWebhookEvent(_ context.Context, stripeEventID string) error {
-	if e, ok := f.Events[stripeEventID]; ok {
-		e.ProcessingStatus = "failed"
+	if event, ok := f.Events[stripeEventID]; ok {
+		event.ProcessingStatus = domain.WebhookStatusFailed
 	}
 	return nil
 }
 
 func (f *FakeWebhookStore) GetOrderBySessionID(_ context.Context, sessionID string) (*db.Order, error) {
-	if o, ok := f.Orders[sessionID]; ok {
-		return o, nil
+	if order, ok := f.Orders[sessionID]; ok {
+		return order, nil
 	}
 	return nil, nil
 }

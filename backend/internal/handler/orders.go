@@ -22,7 +22,7 @@ func (h *OrdersHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	order, err := h.orders.GetOrder(r.Context(), id)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 	if order == nil {
@@ -36,7 +36,7 @@ func (h *OrdersHandler) GetBySession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	order, err := h.orders.GetOrderBySession(r.Context(), sessionID)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 	if order == nil {

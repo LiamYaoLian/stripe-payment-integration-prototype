@@ -26,6 +26,7 @@ type webhookStore interface {
 	InsertWebhookEvent(ctx context.Context, e db.WebhookEvent) error
 	MarkWebhookIgnored(ctx context.Context, stripeEventID string) error
 	ClaimWebhookEvent(ctx context.Context, stripeEventID string) (bool, error)
+	MarkWebhookProcessed(ctx context.Context, stripeEventID string) error
 	FailWebhookEvent(ctx context.Context, stripeEventID string) error
 	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
 	UpdateOrderStatusIfAllowed(ctx context.Context, orderID, newStatus string, paymentIntentID *string, paidAt *time.Time, allowedFrom []string) (bool, error)
@@ -63,7 +64,7 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 			return WebhookOutcomeAcknowledged, nil
 		case domain.WebhookStatusFailed:
 			// retry below
-		case domain.WebhookStatusReceived:
+		case domain.WebhookStatusReceived, domain.WebhookStatusProcessing:
 			return WebhookOutcomeRetryLater, nil
 		}
 	} else {
@@ -102,6 +103,11 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 		return WebhookOutcomeProcessingFailed, nil
 	}
 
+	if err := s.store.MarkWebhookProcessed(ctx, event.ID); err != nil {
+		slog.Error("failed to mark webhook processed", "event_id", event.ID, "error", err)
+		return WebhookOutcomeProcessingFailed, nil
+	}
+
 	return WebhookOutcomeAcknowledged, nil
 }
 
@@ -118,6 +124,8 @@ func (s *WebhookService) handleUnclaimedEvent(ctx context.Context, eventID strin
 		return WebhookOutcomeAcknowledged, nil
 	case domain.WebhookStatusFailed:
 		return WebhookOutcomeProcessingFailed, nil
+	case domain.WebhookStatusProcessing, domain.WebhookStatusReceived:
+		return WebhookOutcomeRetryLater, nil
 	default:
 		return WebhookOutcomeRetryLater, nil
 	}

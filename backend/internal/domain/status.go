@@ -13,8 +13,9 @@ const (
 
 // Webhook processing status values.
 const (
-	WebhookStatusReceived  = "received"
-	WebhookStatusProcessed = "processed"
-	WebhookStatusIgnored   = "ignored"
-	WebhookStatusFailed    = "failed"
+	WebhookStatusReceived   = "received"
+	WebhookStatusProcessing = "processing"
+	WebhookStatusProcessed  = "processed"
+	WebhookStatusIgnored    = "ignored"
+	WebhookStatusFailed     = "failed"
 )

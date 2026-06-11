@@ -1,4 +1,4 @@
-# Environment & secrets
+# Environment & secrets (keep *.example tracked)
 .env
 .env.local
 .env.*.local
@@ -15,28 +15,39 @@ backend/tmp/
 *.dylib
 *.test
 *.out
+*.prof
 coverage.out
 coverage.html
+backend/.cache/
 
 # Node / frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 frontend/tsconfig.tsbuildinfo
+frontend/.eslintcache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 
 # React Router generated types
 .react-router/
 
-# IDE & OS
+# IDE & editor
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+
+# Cursor (local agent state; keep .cursorignore tracked)
+.cursor/
+
+# OS
 .DS_Store
 Thumbs.db
 

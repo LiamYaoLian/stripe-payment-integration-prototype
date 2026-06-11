@@ -33,6 +33,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Use(chimw.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger)
+	r.Use(middleware.LimitRequestBody(1 << 20)) // 1 MiB
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{deps.CORSOrigin},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},

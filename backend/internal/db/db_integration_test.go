@@ -151,13 +151,22 @@ func TestIntegrationStoreWebhookEventLifecycle(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("claimed=%v err=%v", claimed, err)
 	}
+	event, err := store.GetWebhookEvent(ctx, eventID)
+	if err != nil || event == nil || event.ProcessingStatus != "processing" {
+		t.Fatalf("after claim status=%v err=%v", event, err)
+	}
+
 	claimed, err = store.ClaimWebhookEvent(ctx, eventID)
 	if err != nil || claimed {
 		t.Fatalf("second claim claimed=%v err=%v", claimed, err)
 	}
 
-	if err := store.MarkWebhookIgnored(ctx, eventID); err != nil {
+	if err := store.MarkWebhookProcessed(ctx, eventID); err != nil {
 		t.Fatal(err)
+	}
+	event, err = store.GetWebhookEvent(ctx, eventID)
+	if err != nil || event == nil || event.ProcessingStatus != "processed" {
+		t.Fatalf("after processed status=%v err=%v", event, err)
 	}
 }
 

@@ -28,7 +28,7 @@ func (h *CheckoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	idempotencyKey := r.Header.Get("Idempotency-Key")
 	result, err := h.orders.CreateCheckoutSession(r.Context(), idempotencyKey, input)
 	if err != nil {
-		writeServiceError(w, err)
+		writeServiceError(w, r, err)
 		return
 	}
 	api.WriteJSON(w, http.StatusCreated, result)

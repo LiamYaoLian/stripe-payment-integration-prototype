@@ -2,7 +2,15 @@ import {
   CHECKOUT_IN_PROGRESS_MAX_RETRIES,
   CHECKOUT_IN_PROGRESS_RETRY_MS,
 } from '../constants/checkout'
-import type { ApiEnvelope, CheckoutSessionResult, Order, Product } from '../types/api'
+import type { CheckoutSessionResult, Order, Product } from '../types/api'
+import {
+  ApiResponseError,
+  checkoutSessionResultSchema,
+  orderSchema,
+  parseApiEnvelope,
+  productSchema,
+} from './schemas'
+import { z } from 'zod'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -19,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, dataSchema: z.ZodType<T>, init?: RequestInit): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE}${path}`, init)
@@ -31,18 +39,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
 
-  const body = (await response.json()) as ApiEnvelope<T>
-  if (body.error) {
-    throw new ApiError(response.status, body.error.code, body.error.message)
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    throw new ApiError(response.status, 'INVALID_JSON', 'response is not valid JSON')
   }
-  if (!response.ok) {
-    throw new ApiError(response.status, 'UNKNOWN', 'request failed')
+
+  try {
+    const data = parseApiEnvelope(dataSchema, body)
+    if (!response.ok) {
+      throw new ApiError(response.status, 'UNKNOWN', 'request failed')
+    }
+    return data
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+    if (error instanceof z.ZodError) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'API response failed validation')
+    }
+    if (error instanceof ApiResponseError) {
+      throw new ApiError(response.status, error.code, error.message)
+    }
+    throw error
   }
-  return body.data as T
 }
 
 export async function listProducts(): Promise<Product[]> {
-  const data = await request<{ products: Product[] }>('/api/products')
+  const data = await request('/api/products', z.object({ products: z.array(productSchema) }))
   return data.products
 }
 
@@ -56,7 +81,7 @@ export async function createCheckoutSession(
 ): Promise<CheckoutSessionResult> {
   for (let attempt = 0; attempt < CHECKOUT_IN_PROGRESS_MAX_RETRIES; attempt++) {
     try {
-      return await request<CheckoutSessionResult>('/api/checkout/sessions', {
+      return await request('/api/checkout/sessions', checkoutSessionResultSchema, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,5 +105,5 @@ export async function createCheckoutSession(
 }
 
 export async function getOrderBySession(sessionId: string): Promise<Order> {
-  return request<Order>(`/api/orders/by-session/${sessionId}`)
+  return request(`/api/orders/by-session/${sessionId}`, orderSchema)
 }
