@@ -8,11 +8,13 @@ import (
 
 type FakeStripe struct {
 	Session      *stripe.CheckoutSession
+	LastParams   *stripe.CheckoutSessionParams
 	Err          error
 	ExpireCalled bool
 }
 
-func (f *FakeStripe) CreateCheckoutSession(_ *stripe.CheckoutSessionParams, _ string) (*stripe.CheckoutSession, error) {
+func (f *FakeStripe) CreateCheckoutSession(params *stripe.CheckoutSessionParams, _ string) (*stripe.CheckoutSession, error) {
+	f.LastParams = params
 	if f.Err != nil {
 		return nil, f.Err
 	}

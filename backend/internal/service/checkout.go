@@ -195,7 +195,7 @@ func (s *OrderService) buildStripeSessionParams(
 
 	params := &stripe.CheckoutSessionParams{
 		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
-		UIMode:            stripe.String(input.UIMode),
+		UIMode:            stripe.String(domain.StripeUIMode(input.UIMode)),
 		LineItems:         lineItems.stripe,
 		ClientReferenceID: stripe.String(orderNumber),
 		Metadata:          stripeMeta,

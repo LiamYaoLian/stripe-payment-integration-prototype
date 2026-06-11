@@ -29,7 +29,8 @@ func hostedInput() CreateCheckoutInput {
 
 func TestCreateCheckoutSessionSuccessHosted(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
-	svc := newTestOrderService(store, &testutil.FakeStripe{})
+	stripe := &testutil.FakeStripe{}
+	svc := newTestOrderService(store, stripe)
 	result, err := svc.CreateCheckoutSession(t.Context(), "idem-1", hostedInput())
 	if err != nil {
 		t.Fatal(err)
@@ -37,11 +38,15 @@ func TestCreateCheckoutSessionSuccessHosted(t *testing.T) {
 	if result.URL == "" || result.SessionID != "cs_test_fake" {
 		t.Fatalf("result %+v", result)
 	}
+	if stripe.LastParams == nil || stripe.LastParams.UIMode == nil || *stripe.LastParams.UIMode != "hosted_page" {
+		t.Fatalf("stripe ui_mode = %v, want hosted_page", stripe.LastParams)
+	}
 }
 
 func TestCreateCheckoutSessionSuccessEmbedded(t *testing.T) {
 	store := testutil.NewFakeOrderStore()
-	svc := newTestOrderService(store, &testutil.FakeStripe{})
+	stripe := &testutil.FakeStripe{}
+	svc := newTestOrderService(store, stripe)
 	input := hostedInput()
 	input.UIMode = "embedded"
 	result, err := svc.CreateCheckoutSession(t.Context(), "", input)
@@ -50,6 +55,9 @@ func TestCreateCheckoutSessionSuccessEmbedded(t *testing.T) {
 	}
 	if result.ClientSecret == "" {
 		t.Fatalf("result %+v", result)
+	}
+	if stripe.LastParams == nil || stripe.LastParams.UIMode == nil || *stripe.LastParams.UIMode != "embedded_page" {
+		t.Fatalf("stripe ui_mode = %v, want embedded_page", stripe.LastParams)
 	}
 }
 
