@@ -124,7 +124,7 @@ Vite + React; dev proxy `/api` → `:8080`.
 | `/checkout/complete` | Poll (embedded) |
 | `/checkout/cancel` | Cancel page |
 
-`Idempotency-Key` in `sessionStorage` per product; clear before hosted redirect.
+`Idempotency-Key` in `sessionStorage` per product + `uiMode`; clear before hosted redirect / after embedded complete.
 
 ---
 
@@ -150,22 +150,30 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 
 ## Production readiness
 
-**~82%** payment microservice · **~60%** full platform. Money path is solid behind your own auth; platform layer (frontend traces, legal sign-off) has gaps.
+**~84%** payment microservice · **~62%** full platform.
+
+**Design & code quality (snapshot):**
+
+| | |
+|--|--|
+| **Strong** | Handler→service→db layering with injectable ports (`handler/services.go`, `stripeclient/`). Money path: server-side pricing, order-before-Stripe + compensation, webhook as source of truth, atomic claim/complete, amount verify, Dahlia `ui_mode` mapping, canonical idempotency hash + per-`uiMode` client keys. ~29 Go test files + Vitest components; E2E webhook in CI. |
+| **Weak** | Handlers return `db.Order` / `db.Product` (HTTP coupled to schema). In-memory rate limits (`middleware/ratelimit.go`) ×2 K8s replicas = uneven 2× caps. Guest JWT grants full email order history after one access-token proof — no email verify. Stripe idempotency key (`orderID`) ≠ client `Idempotency-Key`. No Playwright E2E, load tests, or frontend traces. `customers` table unused. |
 
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
-| Security | A− | Order-token proof for guest JWT; no magic-link email verify |
-| Reliability | B+ | 2-replica K8s, probes, PDB, graceful shutdown; no multi-region |
-| Observability | A− | OTLP tracing (Jaeger), log correlation, metrics + alerts; no frontend traces |
-| Ops | B+ | CI + release workflow, `k8s-deploy.sh`, kubeconform; wire your registry |
-| Compliance | C− | `docs/COMPLIANCE.md` (PCI SAQ A scope, data inventory); no legal sign-off |
+| Security | B+ | Guest JWT blast radius; per-process rate limits at 2 replicas; no magic-link / email verify |
+| Reliability | B+ | Webhook retry/reclaim, probes, PDB, graceful shutdown; no multi-region or distributed limits |
+| Observability | A− | OTLP (Jaeger), log `trace_id`, metrics + Prometheus rules; no frontend trace propagation |
+| Ops | B | CI + release build, `k8s-deploy.sh`, web + ingress manifests, kubeconform; registry push & alert apply still manual |
+| Compliance | C− | `docs/COMPLIANCE.md` (PCI SAQ A, data inventory); no retention/DSR automation or legal sign-off |
 
 | Scenario | OK? |
 |----------|-----|
 | MVP / internal tool | Yes |
 | Behind your app's auth | Yes |
-| Public at scale | Add alerts, tracing, load tests |
+| Public standalone checkout | Harden guest auth + distributed rate limits first |
+| Public at scale | Add load tests, registry CD, frontend traces |
 | Enterprise | No |
 
 **Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · `scripts/k8s-deploy.sh` · review `docs/COMPLIANCE.md` · import Grafana dashboard + Prometheus rules.
