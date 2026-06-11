@@ -152,7 +152,7 @@ erDiagram
 | `expired` | `checkout.session.expired` |
 | `failed` | `async_payment_failed` or unrecoverable payment failure |
 | `canceled` | Checkout session creation failed; order retained for audit |
-| `refunded` | Reserved for v2 (`charge.refunded`) |
+| `refunded` | `charge.refunded` webhook; only from `paid` |
 
 **State machine rules** (supports out-of-order webhooks):
 - Transitions are **monotonic forward** — never downgrade `paid` or `refunded`
@@ -160,7 +160,7 @@ erDiagram
 - `pending` → `processing` → `paid` is the typical async path, but `pending` → `paid` is valid
 - `expired` / `canceled` only apply if not already `paid` or `processing`
 
-**Other enums**: `UiMode` (`hosted` | `embedded`); `WebhookProcessingStatus` (`received` | `processed` | `ignored` | `failed`)
+**Other enums**: `UiMode` (`hosted` | `embedded`); `WebhookProcessingStatus` (`received` | `processing` | `processed` | `ignored` | `failed`)
 
 ### Design decisions
 
@@ -199,9 +199,13 @@ erDiagram
 
 All JSON responses use an envelope: `{ "data": { ... }, "error": null }`. Errors: `{ "data": null, "error": { "code", "message", "details" } }`.
 
-### `GET /health`
+### Health
 
-Liveness/readiness. Returns `{ "status": "ok", "db": "connected" }`.
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health/live` | Process liveness — always `200` if server is running |
+| `GET /health/ready` | Readiness — `200` when DB connected; `503` when DB down |
+| `GET /health` | Alias for `/health/ready` |
 
 ### `GET /api/products`
 
@@ -229,9 +233,11 @@ Create an order and Stripe Checkout Session.
 | `hosted` | `cancel_url`: `{APP_FRONTEND_URL}/checkout/cancel` |
 | `embedded` | `return_url`: `{APP_FRONTEND_URL}/checkout/complete` |
 
-**Response 201 — hosted**: `orderId`, `orderNumber`, `sessionId`, `url`
+**Response 201 — hosted**: `orderId`, `orderNumber`, `sessionId`, `url`, `accessToken`
 
-**Response 201 — embedded**: `orderId`, `orderNumber`, `sessionId`, `clientSecret`
+**Response 201 — embedded**: `orderId`, `orderNumber`, `sessionId`, `clientSecret`, `accessToken`
+
+`accessToken` is a one-time scoped secret for order reads; store client-side (e.g. `sessionStorage` keyed by `sessionId`).
 
 **Error codes**: `VALIDATION_ERROR` (400), `PRODUCT_NOT_FOUND` (404), `IDEMPOTENCY_CONFLICT` (409), `CHECKOUT_IN_PROGRESS` (409), `STRIPE_ERROR` (502)
 
@@ -241,7 +247,19 @@ Poll order status after redirect. Returns `orderNumber`, `status`, `totalAmountC
 
 **Polling**: treat `pending` and `processing` as in-flight; poll until terminal status or timeout (~30s). Final payment truth comes from webhooks, not the redirect alone.
 
-**Access control (prototype)**: unauthenticated. Acceptable for local dev; add session-scoped tokens before production.
+**Access control**: order reads require `X-Order-Token` header matching the hash stored at checkout creation. Missing or invalid token → `401`.
+
+### `POST /api/auth/session`
+
+Issue a guest JWT for email-scoped order history (v1.5 auth).
+
+**Request**: `{ "email": "buyer@example.com" }`
+
+**Response 200**: `{ "token", "expiresAt", "role": "guest" }` — 7-day HS256 JWT.
+
+### `GET /api/orders/mine`
+
+List recent orders for the authenticated guest email. Requires `Authorization: Bearer <token>`.
 
 ### `POST /api/webhooks/stripe`
 
@@ -255,15 +273,17 @@ Stripe webhook endpoint. **Raw body required** for signature verification.
 | `checkout.session.async_payment_succeeded` | If `pending` or `processing` → `paid`. Store `payment_intent`, set `paidAt` |
 | `checkout.session.async_payment_failed` | Set `failed` (only if not `paid`) |
 | `checkout.session.expired` | Set `expired` (only if not `paid` or `processing`) |
+| `charge.refunded` | Resolve order via `stripe_payment_intent_id` → `refunded` (only from `paid`; idempotent if already `refunded`) |
 
-All handlers resolve the order via `session.id` → `orders.stripe_checkout_session_id`. Store `stripe_payment_intent_id` on every path that reaches `paid`. Do **not** use standalone `payment_intent.payment_failed`.
+Session handlers resolve the order via `session.id` → `orders.stripe_checkout_session_id`. Refund handler resolves via `payment_intent` on the charge object. Store `stripe_payment_intent_id` on every path that reaches `paid`. Do **not** use standalone `payment_intent.payment_failed`.
 
 **Processing model**
-1. Verify `Stripe-Signature` against raw body
-2. Upsert `WebhookEvent` by `stripeEventId` — `processed` → no-op `200`; `failed` → retry on redelivery
-3. Process in a DB transaction with optimistic lock on `processing_status`
-4. Handler error → `500` (Stripe retries); invalid signature → `400`
-5. Unhandled event types → record as `ignored`, return `200`
+1. Verify `Stripe-Signature` against raw body (`IgnoreAPIVersionMismatch` off in production; pin `STRIPE_API_VERSION`)
+2. Upsert `WebhookEvent` by `stripeEventId` — `processed` / `ignored` → no-op `200`; `failed` → retry on redelivery
+3. Claim `received` / `failed` → `processing`; reclaim stale `processing` (>5 min) on retry
+4. Atomically update order status + mark webhook `processed` in one DB transaction
+5. Handler error → `500` (Stripe retries); invalid signature → `400`; concurrent in-flight → `503`
+6. Unhandled event types → record as `ignored`, return `200`
 
 ---
 
@@ -303,6 +323,13 @@ React SPA. All API calls go to the Go backend. Checkout requests send an `Idempo
 - Orders never hard-deleted; failures set `canceled` with `cancel_reason`
 - No `Customer` upsert by email without authentication
 - Structured logging with request ID; never log secrets or full card data
+- Order access tokens (`X-Order-Token`) on all order read endpoints
+- Guest JWT for `GET /api/orders/mine` (`AUTH_JWT_SECRET`)
+- Rate limiting: checkout 20/min, order reads 120/min per IP; `429` with `Retry-After`
+- Request body limit 1 MiB; `413` on overflow
+- Security headers on API; CSP on nginx frontend (Stripe.js allowlist)
+- `ENV=production` rejects localhost origins, test Stripe keys, `sslmode=disable`
+- Prometheus `/metrics` gated by `METRICS_API_KEY`
 
 ---
 
@@ -314,21 +341,103 @@ React SPA. All API calls go to the Go backend. Checkout requests send an `Idempo
 | **Webhook handler** | Optimistic lock concurrency, out-of-order async events, `payment_intent` on all paid paths |
 | **Checkout handler** | Stripe error → `canceled` (not delete), idempotency on canceled orders creates new row |
 | **Integration** | Stripe CLI webhook triggers against local endpoint |
+| **E2E** | `TestE2EWebhookCheckoutCompleted` — signed fixture through router against real Postgres (CI) |
 
 ---
 
 ## Out of scope (v1)
 
 - Subscriptions / recurring billing
-- Refunds UI (schema reserves `refunded` status)
+- Refunds UI (webhook handler exists; no admin/refund API or UI)
 - Stripe Connect / marketplace splits
 - Tax (Stripe Tax)
 - Multi-currency adaptive pricing
-- Authenticated order lookup
-- Customer table linkage (requires JWT auth)
+- Full user accounts (passwords, OAuth, admin roles)
+- Customer table linkage (requires authenticated user ID)
 
 ## Future (v2)
 
 - Stripe catalog sync — persist Stripe Product/Price IDs; switch line items from `price_data` to Price ID
-- JWT auth + `Customer` linkage via authenticated user ID
-- `charge.refunded` webhook handler resolving via `stripe_payment_intent_id`
+- Full JWT auth + `Customer` linkage via authenticated user ID (beyond guest email sessions)
+- Partial refunds, disputes (`charge.dispute.*`), reconciliation reporting
+- OpenTelemetry tracing, error tracking (Sentry/Datadog), alert runbooks
+- External Secrets Operator / Vault integration (K8s templates exist; not wired)
+- Browser E2E (Playwright), load/chaos testing
+
+---
+
+## Production readiness critique
+
+**Overall score: ~75%** for a payment microservice, **~55%** as a full product platform.
+
+This is no longer a toy prototype. For **accepting one-time Stripe payments behind your own app** it is deployable with ops discipline. For **a customer-facing SaaS with accounts, compliance, and 24/7 ops** meaningful gaps remain.
+
+### Tier breakdown
+
+| Dimension | Grade | Notes |
+|-----------|-------|-------|
+| **Payment correctness** | A | Server-side pricing, idempotency (app + Stripe), webhook verify + dedup, atomic completion, stale reclaim, refunds via `charge.refunded` |
+| **Security (payment path)** | B+ | Order access tokens, guest JWT, rate limits, body limits, CORS, CSP on nginx, prod config guards |
+| **Reliability** | B | Health live/ready, graceful shutdown, stale order cleanup, webhook crash recovery; no multi-region / HA story |
+| **Observability** | C+ | JSON logs, request IDs, Prometheus `/metrics`; no tracing, no alerting runbooks, no SLOs |
+| **Operations / deploy** | B− | Dockerfiles, compose prod, K8s Job + deployment templates, `migrate-release`; not wired to a real cluster/CD |
+| **Auth & identity** | C+ | Guest email JWT + order tokens; no passwords, OAuth, admin roles, or `customers` linkage |
+| **Testing** | B | Strong unit + DB integration; one E2E webhook in CI; no browser E2E, no load/soak tests |
+| **Compliance & scale** | D | No PCI scope doc, audit log, data retention, GDPR flows, or horizontal scaling design |
+
+### What is genuinely production-grade
+
+**Payment path** — the bar that matters most for go-live:
+
+- Checkout never trusts client prices
+- Webhooks are verified, idempotent, and recover from crashes (`processing` reclaim)
+- Order updates and webhook marks are transactional
+- Refunds transition `paid` → `refunded` by payment intent
+- Stripe API version pinned and enforced in production webhooks
+- Compensation on Stripe/DB failures (cancel + expire session)
+
+**Security baseline** for an internal or low-traffic service:
+
+- Order reads require `X-Order-Token` (not guessable IDs alone)
+- Rate limiting with proper `429` + `Retry-After`
+- `ENV=production` rejects localhost, test keys, `sslmode=disable`
+- Metrics endpoint gated by API key
+
+**Ops foundations**:
+
+- `/health/live` vs `/health/ready`
+- Migrate-as-release-job pattern (`deploy/kubernetes/migrate-job.yaml`, `scripts/migrate-release.sh`)
+- `docker-compose.prod.yml` for full local stack
+
+### What keeps it from full production platform
+
+1. **Identity is guest-only** — JWT sessions are email-scoped, not accounts. No password reset, OAuth, role-based admin, or per-user audit.
+2. **Observability stops at metrics** — Prometheus scrape works; no distributed tracing, error tracking, dashboards, or alert rules in repo.
+3. **Secrets are templates, not integrated** — K8s `secrets.example.yaml` exists; External Secrets Operator / Vault not wired. Compose uses flat env vars.
+4. **No edge WAF / DDoS layer** — App-layer rate limits help; no Cloudflare/AWS WAF or bot protection.
+5. **Testing gaps** — One E2E webhook test; no Playwright checkout flow, chaos testing, or load tests.
+6. **Documentation drift** — README still minimal vs implemented features (migrations, auth, metrics, prod compose).
+7. **Partial refund / dispute edge cases** — Full `charge.refunded` handled; partial refunds, disputes, reconciliation not.
+8. **Horizontal scale not proven** — Stateless API + Postgres is fine at moderate scale; no read replicas or multi-replica webhook concurrency analysis.
+
+### Use-case verdict
+
+| Scenario | Ready? |
+|----------|--------|
+| Internal tool / demo / MVP (<1k orders/mo) | Yes — with `make migrate`, prod env, Stripe live keys |
+| B2B embed “pay for X” behind your auth | Yes — treat as payment service; your app owns users |
+| Public consumer storefront at scale | Risky without tracing, alerting, full auth, load tests |
+| Regulated / enterprise | No — needs compliance package, audit trails, key rotation, pen test |
+
+### Minimum before production deploy
+
+1. Run migrations through `000003_production_hardening` on prod DB
+2. Set `ENV=production`, HTTPS URLs, live Stripe keys, strong `AUTH_JWT_SECRET`, `METRICS_API_KEY`
+3. Wire secrets via platform (K8s Secret / ESO), not `.env` on disk
+4. Add alerting on: `/health/ready` failures, webhook `processing_failed` rate, checkout 5xx
+5. Document rollback + Stripe Dashboard webhook replay procedure
+6. Complete [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live)
+
+### Bottom line
+
+The **money path is production-grade** for a focused checkout service. The **platform around it** (identity, observability depth, ops maturity, compliance) is **strong prototype / early production** — roughly three-quarters of the way for a payment microservice, halfway if you need a standalone customer-facing product.
