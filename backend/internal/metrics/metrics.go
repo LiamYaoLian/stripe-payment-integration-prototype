@@ -2,8 +2,13 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+func init() {
+	prometheus.MustRegister(collectors.NewBuildInfoCollector())
+}
 
 var (
 	HTTPRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{

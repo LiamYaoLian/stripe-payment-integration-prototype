@@ -1,0 +1,9 @@
+# Append to Prometheus additionalScrapeConfigs when /metrics requires X-API-Key.
+- job_name: stripe-payment-api
+  metrics_path: /metrics
+  scheme: http
+  static_configs:
+    - targets: ['stripe-payment-api:8080']
+  authorization:
+    type: API-Key
+    credentials: YOUR_METRICS_API_KEY

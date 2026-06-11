@@ -1,0 +1,17 @@
+# Requires Prometheus Operator. Metrics are protected by X-API-Key — use
+# deploy/prometheus/scrape-config.snippet.yaml if your operator cannot set custom headers.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stripe-payment-api
+  labels:
+    app: stripe-payment-api
+spec:
+  selector:
+    matchLabels:
+      app: stripe-payment-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

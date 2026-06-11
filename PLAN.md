@@ -132,7 +132,7 @@ Vite + React; dev proxy `/api` → `:8080`.
 
 Webhook signature on raw body · server-side pricing · order tokens · rate limits · CORS to `CORS_ORIGIN` · no `client_secret` on order reads · structured logs (no secrets/card data).
 
-**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault. Scrape `/metrics`; load `deploy/prometheus/alerts.yaml`.
+**Prod:** `ENV=production`, live keys, `AUTH_JWT_SECRET`, `METRICS_API_KEY`, TLS on DB, secrets in K8s/vault. Observability: `deploy/prometheus/*`, `deploy/grafana/dashboard.json`. Deploy: `scripts/k8s-deploy.sh`. Compliance: `docs/COMPLIANCE.md`.
 
 **Stack:** Go + chi + pgx · Postgres 16 · `golang-migrate` · `stripe-go` + `@stripe/react-stripe-js`.
 
@@ -150,16 +150,16 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 
 ## Production readiness
 
-**~78%** payment microservice · **~55%** full platform. Money path is solid behind your own auth; platform layer (identity, tracing, compliance) has gaps.
+**~80%** payment microservice · **~58%** full platform. Money path is solid behind your own auth; platform layer (tracing, legal sign-off) has gaps.
 
 | Area | Grade | Gap |
 |------|-------|-----|
 | Payments | A | — |
 | Security | A− | Order-token proof for guest JWT; no magic-link email verify |
 | Reliability | B+ | 2-replica K8s, probes, PDB, graceful shutdown; no multi-region |
-| Observability | B− | Prometheus counters/histograms + `deploy/prometheus/alerts.yaml`; no tracing |
-| Ops | B− | K8s templates, no real CD |
-| Compliance | D | No PCI/GDPR docs |
+| Observability | B+ | Metrics, alerts, ServiceMonitor, Grafana dashboard; no distributed tracing |
+| Ops | B+ | CI + release workflow, `k8s-deploy.sh`, kubeconform; wire your registry |
+| Compliance | C− | `docs/COMPLIANCE.md` (PCI SAQ A scope, data inventory); no legal sign-off |
 
 | Scenario | OK? |
 |----------|-----|
@@ -168,4 +168,4 @@ Webhook signature on raw body · server-side pricing · order tokens · rate lim
 | Public at scale | Add alerts, tracing, load tests |
 | Enterprise | No |
 
-**Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · apply K8s PDB + `deploy/prometheus/alerts.yaml`.
+**Before go-live:** migrations through `000003_production_hardening` · prod env vars · [Stripe go-live checklist](https://docs.stripe.com/get-started/checklist/go-live) · `scripts/k8s-deploy.sh` · review `docs/COMPLIANCE.md` · import Grafana dashboard + Prometheus rules.

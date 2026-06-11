@@ -1,4 +1,4 @@
-.PHONY: migrate migrate-release seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend
+.PHONY: migrate migrate-release seed run dev up-prod test test-integration test-frontend test-all lint lint-backend lint-frontend k8s-validate release-build
 
 DATABASE_URL ?= postgresql://stripe:stripe@localhost:5434/stripe_payment?sslmode=disable
 # host.docker.internal lets the migrate container reach Postgres on the Mac host
@@ -52,3 +52,13 @@ lint-backend:
 
 lint-frontend:
 	cd frontend && npm run lint
+
+k8s-validate:
+	docker run --rm -v "$(CURDIR):/work" ghcr.io/yannh/kubeconform:latest -summary /work/deploy/kubernetes
+
+release-build:
+	docker build -t stripe-payment-api:local ./backend
+	docker build \
+		--build-arg VITE_API_URL=http://localhost:8080 \
+		--build-arg VITE_STRIPE_PUBLISHABLE_KEY=pk_test_local \
+		-t stripe-payment-web:local ./frontend
