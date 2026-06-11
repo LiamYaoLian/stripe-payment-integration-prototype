@@ -12,13 +12,11 @@ import (
 // FakeCustomerStore is an in-memory customer store for auth tests.
 type FakeCustomerStore struct {
 	Customers map[string]*db.Customer
-	Orders    map[string]*db.Order
 }
 
 func NewFakeCustomerStore() *FakeCustomerStore {
 	return &FakeCustomerStore{
 		Customers: make(map[string]*db.Customer),
-		Orders:    make(map[string]*db.Order),
 	}
 }
 
@@ -52,15 +50,4 @@ func (f *FakeCustomerStore) GetCustomerByID(_ context.Context, id string) (*db.C
 		return c, nil
 	}
 	return nil, nil
-}
-
-func (f *FakeCustomerStore) LinkOrdersToCustomer(_ context.Context, customerID, email string) error {
-	for _, order := range f.Orders {
-		if order.CustomerID == nil && order.CustomerEmail != nil &&
-			strings.EqualFold(*order.CustomerEmail, email) {
-			id := customerID
-			order.CustomerID = &id
-		}
-	}
-	return nil
 }

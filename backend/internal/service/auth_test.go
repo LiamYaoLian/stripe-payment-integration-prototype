@@ -6,7 +6,6 @@ import (
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
-	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/testutil"
 	"github.com/rs/xid"
 )
@@ -44,9 +43,6 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 func TestRegisterSuccess(t *testing.T) {
 	store := testutil.NewFakeCustomerStore()
 	email := "buyer@example.com"
-	store.Orders["ord_1"] = &db.Order{
-		ID: "ord_1", CustomerEmail: &email,
-	}
 	svc := NewAuthService(store, "test-secret")
 
 	result, err := svc.Register(context.Background(), email, "password123")
@@ -55,9 +51,6 @@ func TestRegisterSuccess(t *testing.T) {
 	}
 	if result.Token == "" || result.User.Email != email {
 		t.Fatalf("result %+v", result)
-	}
-	if store.Orders["ord_1"].CustomerID == nil || *store.Orders["ord_1"].CustomerID != result.User.ID {
-		t.Fatal("expected order linked to new customer")
 	}
 
 	claims, err := auth.VerifyUserToken("test-secret", result.Token)

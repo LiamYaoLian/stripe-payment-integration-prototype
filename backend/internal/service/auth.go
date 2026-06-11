@@ -34,7 +34,6 @@ type authCustomerStore interface {
 	CreateCustomer(ctx context.Context, id, email, passwordHash string) (*db.Customer, error)
 	GetCustomerByEmail(ctx context.Context, email string) (*db.Customer, error)
 	GetCustomerByID(ctx context.Context, id string) (*db.Customer, error)
-	LinkOrdersToCustomer(ctx context.Context, customerID, email string) error
 }
 
 // AuthService handles user registration and login.
@@ -74,9 +73,6 @@ func (s *AuthService) Register(ctx context.Context, email, password string) (*Us
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.LinkOrdersToCustomer(ctx, customer.ID, customer.Email); err != nil {
-		return nil, err
-	}
 
 	return s.issueSession(customer)
 }
@@ -97,9 +93,6 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*UserS
 	}
 	if customer == nil || !auth.CheckPassword(customer.PasswordHash, password) {
 		return nil, invalidCredentials()
-	}
-	if err := s.store.LinkOrdersToCustomer(ctx, customer.ID, customer.Email); err != nil {
-		return nil, err
 	}
 
 	return s.issueSession(customer)

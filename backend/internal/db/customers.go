@@ -62,13 +62,3 @@ func (s *Store) GetCustomerByID(ctx context.Context, id string) (*Customer, erro
 	}
 	return &customer, nil
 }
-
-// LinkOrdersToCustomer associates anonymous orders with a customer account by email.
-func (s *Store) LinkOrdersToCustomer(ctx context.Context, customerID, email string) error {
-	_, err := s.pool.Exec(ctx, `
-		UPDATE orders SET customer_id = $1, updated_at = now()
-		WHERE customer_id IS NULL AND lower(customer_email) = lower($2)`,
-		customerID, email,
-	)
-	return err
-}
