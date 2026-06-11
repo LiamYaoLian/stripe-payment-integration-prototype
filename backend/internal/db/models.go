@@ -47,6 +47,7 @@ type Order struct {
 	PaidAt                  *time.Time
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+	AccessTokenHash         *string
 	Items                   []OrderItem
 }
 
@@ -58,7 +59,8 @@ type WebhookEvent struct {
 	OrderID          *string
 	ProcessingStatus string
 	Payload          json.RawMessage
-	ProcessedAt      *time.Time
+	ProcessedAt          *time.Time
+	ProcessingStartedAt  *time.Time
 }
 
 // CreateOrderParams holds fields for inserting a new order.
@@ -75,6 +77,7 @@ type CreateOrderParams struct {
 	ReturnURL        *string
 	Metadata         json.RawMessage
 	RequestBodyHash  string
+	AccessTokenHash  string
 }
 
 // CreateOrderItemParams holds fields for inserting an order line item.

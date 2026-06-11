@@ -27,8 +27,11 @@ func (c *Client) withKey(fn func() error) error {
 	return fn()
 }
 
-// CreateCheckoutSession creates a Stripe Checkout Session.
-func (c *Client) CreateCheckoutSession(params *stripe.CheckoutSessionParams) (*stripe.CheckoutSession, error) {
+// CreateCheckoutSession creates a Stripe Checkout Session with an idempotency key.
+func (c *Client) CreateCheckoutSession(params *stripe.CheckoutSessionParams, idempotencyKey string) (*stripe.CheckoutSession, error) {
+	if idempotencyKey != "" {
+		params.SetIdempotencyKey(idempotencyKey)
+	}
 	var result *stripe.CheckoutSession
 	var callErr error
 	err := c.withKey(func() error {

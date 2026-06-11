@@ -28,28 +28,32 @@ type webhookStore interface {
 	InsertWebhookEvent(ctx context.Context, e db.WebhookEvent) error
 	MarkWebhookIgnored(ctx context.Context, stripeEventID string) error
 	ClaimWebhookEvent(ctx context.Context, stripeEventID string) (bool, error)
-	MarkWebhookProcessed(ctx context.Context, stripeEventID string, orderID *string) error
+	CompleteWebhookProcessing(ctx context.Context, completion db.WebhookCompletion) error
 	FailWebhookEvent(ctx context.Context, stripeEventID string) error
 	GetOrderBySessionID(ctx context.Context, sessionID string) (*db.Order, error)
-	UpdateOrderStatusIfAllowed(ctx context.Context, orderID, newStatus string, paymentIntentID *string, paidAt *time.Time, allowedFrom []string) (bool, error)
 }
 
 // WebhookService processes Stripe webhook events.
 type WebhookService struct {
-	store         webhookStore
-	webhookSecret string
+	store                         webhookStore
+	webhookSecret                 string
+	ignoreStripeAPIVersionMismatch bool
 }
 
 // NewWebhookService returns a WebhookService backed by the given store.
-func NewWebhookService(store webhookStore, webhookSecret string) *WebhookService {
-	return &WebhookService{store: store, webhookSecret: webhookSecret}
+func NewWebhookService(store webhookStore, webhookSecret string, ignoreStripeAPIVersionMismatch bool) *WebhookService {
+	return &WebhookService{
+		store:                         store,
+		webhookSecret:                 webhookSecret,
+		ignoreStripeAPIVersionMismatch: ignoreStripeAPIVersionMismatch,
+	}
 }
 
 // Handle verifies, deduplicates, and processes a Stripe webhook payload.
 // Store failures map to Stripe-facing outcomes; err is only set for programmer errors.
 func (s *WebhookService) Handle(ctx context.Context, body []byte, signature string) (WebhookOutcome, error) {
 	event, err := webhook.ConstructEventWithOptions(body, signature, s.webhookSecret, webhook.ConstructEventOptions{
-		IgnoreAPIVersionMismatch: true,
+		IgnoreAPIVersionMismatch: s.ignoreStripeAPIVersionMismatch,
 	})
 	if err != nil {
 		slog.Warn("webhook signature verification failed", "error", err)
@@ -67,8 +71,12 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 			return WebhookOutcomeAcknowledged, nil
 		case domain.WebhookStatusFailed:
 			// retry below
-		case domain.WebhookStatusReceived, domain.WebhookStatusProcessing:
+		case domain.WebhookStatusReceived:
 			return WebhookOutcomeRetryLater, nil
+		case domain.WebhookStatusProcessing:
+			if !db.IsStaleWebhookProcessing(existing) {
+				return WebhookOutcomeRetryLater, nil
+			}
 		}
 	} else {
 		payload, err := json.Marshal(event)
@@ -101,7 +109,7 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 		return s.handleUnclaimedEvent(ctx, event.ID)
 	}
 
-	orderID, err := s.processEvent(ctx, event)
+	completion, err := s.buildCompletion(ctx, event)
 	if err != nil {
 		if failErr := s.store.FailWebhookEvent(ctx, event.ID); failErr != nil {
 			slog.Warn("failed to mark webhook failed", "event_id", event.ID, "error", failErr)
@@ -110,7 +118,7 @@ func (s *WebhookService) Handle(ctx context.Context, body []byte, signature stri
 		return WebhookOutcomeProcessingFailed, nil
 	}
 
-	if err := s.store.MarkWebhookProcessed(ctx, event.ID, orderID); err != nil {
+	if err := s.store.CompleteWebhookProcessing(ctx, completion); err != nil {
 		return webhookStoreError(WebhookOutcomeProcessingFailed, err)
 	}
 
@@ -158,18 +166,20 @@ func (s *WebhookService) handleUnclaimedEvent(ctx context.Context, eventID strin
 	}
 }
 
-func (s *WebhookService) processEvent(ctx context.Context, event stripe.Event) (*string, error) {
+func (s *WebhookService) buildCompletion(ctx context.Context, event stripe.Event) (db.WebhookCompletion, error) {
+	completion := db.WebhookCompletion{StripeEventID: event.ID}
+
 	switch event.Type {
 	case "checkout.session.completed":
-		return s.handleSessionCompleted(ctx, event)
+		return s.completionSessionCompleted(ctx, event, completion)
 	case "checkout.session.async_payment_succeeded":
-		return s.handleAsyncSucceeded(ctx, event)
+		return s.completionAsyncSucceeded(ctx, event, completion)
 	case "checkout.session.async_payment_failed":
-		return s.handleAsyncFailed(ctx, event)
+		return s.completionAsyncFailed(ctx, event, completion)
 	case "checkout.session.expired":
-		return s.handleSessionExpired(ctx, event)
+		return s.completionSessionExpired(ctx, event, completion)
 	default:
-		return nil, nil
+		return completion, nil
 	}
 }
 
@@ -189,74 +199,86 @@ func paymentIntentID(session *stripe.CheckoutSession) *string {
 	return &id
 }
 
-func (s *WebhookService) handleSessionCompleted(ctx context.Context, event stripe.Event) (*string, error) {
+func (s *WebhookService) completionSessionCompleted(ctx context.Context, event stripe.Event, completion db.WebhookCompletion) (db.WebhookCompletion, error) {
 	session, err := parseSession(event)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
 	if session.Status != stripe.CheckoutSessionStatusComplete {
-		return nil, nil
+		return completion, nil
 	}
 	rawOrder, lookupErr := s.store.GetOrderBySessionID(ctx, session.ID)
 	order, err := resolveWebhookOrder(rawOrder, session.ID, lookupErr)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
+	completion.OrderID = &order.ID
 
 	paymentIntent := paymentIntentID(session)
 	now := time.Now().UTC()
 
 	if session.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
-		_, err = s.store.UpdateOrderStatusIfAllowed(ctx, order.ID, domain.OrderStatusPaid, paymentIntent, &now, []string{domain.OrderStatusPending, domain.OrderStatusProcessing})
-		return &order.ID, err
+		completion.NewStatus = domain.OrderStatusPaid
+		completion.PaymentIntentID = paymentIntent
+		completion.PaidAt = &now
+		completion.AllowedFrom = []string{domain.OrderStatusPending, domain.OrderStatusProcessing}
+		return completion, nil
 	}
 	if session.PaymentStatus == stripe.CheckoutSessionPaymentStatusUnpaid {
-		_, err = s.store.UpdateOrderStatusIfAllowed(ctx, order.ID, domain.OrderStatusProcessing, paymentIntent, nil, []string{domain.OrderStatusPending})
-		return &order.ID, err
+		completion.NewStatus = domain.OrderStatusProcessing
+		completion.PaymentIntentID = paymentIntent
+		completion.AllowedFrom = []string{domain.OrderStatusPending}
 	}
-	return &order.ID, nil
+	return completion, nil
 }
 
-func (s *WebhookService) handleAsyncSucceeded(ctx context.Context, event stripe.Event) (*string, error) {
+func (s *WebhookService) completionAsyncSucceeded(ctx context.Context, event stripe.Event, completion db.WebhookCompletion) (db.WebhookCompletion, error) {
 	session, err := parseSession(event)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
 	rawOrder, lookupErr := s.store.GetOrderBySessionID(ctx, session.ID)
 	order, err := resolveWebhookOrder(rawOrder, session.ID, lookupErr)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
-	paymentIntent := paymentIntentID(session)
 	now := time.Now().UTC()
-	_, err = s.store.UpdateOrderStatusIfAllowed(ctx, order.ID, domain.OrderStatusPaid, paymentIntent, &now, []string{domain.OrderStatusPending, domain.OrderStatusProcessing})
-	return &order.ID, err
+	completion.OrderID = &order.ID
+	completion.NewStatus = domain.OrderStatusPaid
+	completion.PaymentIntentID = paymentIntentID(session)
+	completion.PaidAt = &now
+	completion.AllowedFrom = []string{domain.OrderStatusPending, domain.OrderStatusProcessing}
+	return completion, nil
 }
 
-func (s *WebhookService) handleAsyncFailed(ctx context.Context, event stripe.Event) (*string, error) {
+func (s *WebhookService) completionAsyncFailed(ctx context.Context, event stripe.Event, completion db.WebhookCompletion) (db.WebhookCompletion, error) {
 	session, err := parseSession(event)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
 	rawOrder, lookupErr := s.store.GetOrderBySessionID(ctx, session.ID)
 	order, err := resolveWebhookOrder(rawOrder, session.ID, lookupErr)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
-	_, err = s.store.UpdateOrderStatusIfAllowed(ctx, order.ID, domain.OrderStatusFailed, nil, nil, []string{domain.OrderStatusPending, domain.OrderStatusProcessing})
-	return &order.ID, err
+	completion.OrderID = &order.ID
+	completion.NewStatus = domain.OrderStatusFailed
+	completion.AllowedFrom = []string{domain.OrderStatusPending, domain.OrderStatusProcessing}
+	return completion, nil
 }
 
-func (s *WebhookService) handleSessionExpired(ctx context.Context, event stripe.Event) (*string, error) {
+func (s *WebhookService) completionSessionExpired(ctx context.Context, event stripe.Event, completion db.WebhookCompletion) (db.WebhookCompletion, error) {
 	session, err := parseSession(event)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
 	rawOrder, lookupErr := s.store.GetOrderBySessionID(ctx, session.ID)
 	order, err := resolveWebhookOrder(rawOrder, session.ID, lookupErr)
 	if err != nil {
-		return nil, err
+		return completion, err
 	}
-	_, err = s.store.UpdateOrderStatusIfAllowed(ctx, order.ID, domain.OrderStatusExpired, nil, nil, []string{domain.OrderStatusPending})
-	return &order.ID, err
+	completion.OrderID = &order.ID
+	completion.NewStatus = domain.OrderStatusExpired
+	completion.AllowedFrom = []string{domain.OrderStatusPending}
+	return completion, nil
 }

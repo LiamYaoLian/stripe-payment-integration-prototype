@@ -104,6 +104,10 @@ export async function createCheckoutSession(
   throw new Error('checkout failed')
 }
 
-export async function getOrderBySession(sessionId: string): Promise<Order> {
-  return request(`/api/orders/by-session/${sessionId}`, orderSchema)
+export async function getOrderBySession(sessionId: string, accessToken?: string | null): Promise<Order> {
+  const headers: Record<string, string> = {}
+  if (accessToken) {
+    headers['X-Order-Token'] = accessToken
+  }
+  return request(`/api/orders/by-session/${sessionId}`, orderSchema, { headers })
 }

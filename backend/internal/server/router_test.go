@@ -19,7 +19,7 @@ func newTestRouter(t *testing.T, health testutil.FakeHealth) (*testutil.FakeOrde
 	store.Products["p1"] = db.Product{ID: "p1", Name: "Pro", UnitAmountCents: 4900, Currency: "usd", Active: true}
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
-	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret)
+	webhooks := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true)
 	return store, NewRouter(RouterDeps{
 		Health:     health,
 		Products:   products,
@@ -50,7 +50,10 @@ func TestRouterHealthOK(t *testing.T) {
 func TestRouterHealthDBDisconnected(t *testing.T) {
 	_, r := newTestRouter(t, testutil.FakeHealth{Err: os.ErrDeadlineExceeded})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
+	}
 	var env struct {
 		Data map[string]string `json:"data"`
 	}
@@ -88,12 +91,17 @@ func TestRouterCreateCheckoutSession(t *testing.T) {
 func TestRouterGetOrderBySession(t *testing.T) {
 	store, r := newTestRouter(t, testutil.FakeHealth{})
 	sessID := "cs_router_test"
-	store.OrdersBySession[sessID] = &db.Order{
+	token, _ := testutil.NewOrderAccessToken(t)
+	order := &db.Order{
 		ID: "ord-router", OrderNumber: "ORD-R", Status: "paid",
 		TotalAmountCents: 4900, Currency: "usd",
 	}
+	testutil.WithAccessToken(order, token)
+	store.OrdersBySession[sessID] = order
+	req := httptest.NewRequest(http.MethodGet, "/api/orders/by-session/"+sessID, nil)
+	req.Header.Set("X-Order-Token", token)
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orders/by-session/"+sessID, nil))
+	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -109,7 +117,7 @@ func TestRouterWebhookCheckoutCompleted(t *testing.T) {
 	whStore.Orders["cs_test_completed"] = &db.Order{ID: "ord-wh", Status: "pending"}
 	products := service.NewProductService(store)
 	orders := service.NewOrderService(store, &testutil.FakeStripe{}, "http://localhost:5173")
-	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret)
+	webhooks := service.NewWebhookService(whStore, testutil.TestWebhookSecret, true)
 	r := NewRouter(RouterDeps{
 		Health: testutil.FakeHealth{}, Products: products, Orders: orders, Webhooks: webhooks,
 		CORSOrigin: "http://localhost:5173",

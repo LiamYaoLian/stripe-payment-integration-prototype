@@ -9,7 +9,8 @@ const orderSelectColumns = `
 	id, order_number, idempotency_key, status::text, total_amount_cents, currency,
 	customer_email, stripe_checkout_session_id, stripe_payment_intent_id,
 	stripe_checkout_url, stripe_client_secret, ui_mode::text,
-	success_url, cancel_url, return_url, metadata, paid_at, created_at, updated_at`
+	success_url, cancel_url, return_url, metadata, paid_at, created_at, updated_at,
+	access_token_hash`
 
 func nullIfEmpty(value string) *string {
 	if value == "" {

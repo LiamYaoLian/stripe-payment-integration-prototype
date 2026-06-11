@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
+	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/auth"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/db"
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/domain"
 	"github.com/rs/xid"
@@ -38,6 +39,7 @@ type CheckoutResult struct {
 	SessionID    string `json:"sessionId"`
 	URL          string `json:"url,omitempty"`
 	ClientSecret string `json:"clientSecret,omitempty"`
+	AccessToken  string `json:"accessToken,omitempty"`
 }
 
 type orderStore interface {
@@ -53,7 +55,7 @@ type orderStore interface {
 }
 
 type checkoutStripeClient interface {
-	CreateCheckoutSession(params *stripe.CheckoutSessionParams) (*stripe.CheckoutSession, error)
+	CreateCheckoutSession(params *stripe.CheckoutSessionParams, idempotencyKey string) (*stripe.CheckoutSession, error)
 	ExpireCheckoutSession(sessionID string) error
 }
 
@@ -73,17 +75,51 @@ func NewOrderService(store orderStore, stripe checkoutStripeClient, frontendURL 
 	}
 }
 
-// GetOrder returns an order by ID.
-func (s *OrderService) GetOrder(ctx context.Context, id string) (*db.Order, error) {
-	return s.store.GetOrderByID(ctx, id)
+// GetOrder returns an order by ID when the access token matches.
+func (s *OrderService) GetOrder(ctx context.Context, id string, accessToken string) (*db.Order, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "invalid order id"}
+	}
+	order, err := s.store.GetOrderByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, nil
+	}
+	if err := verifyOrderAccess(order, accessToken); err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 
-// GetOrderBySession returns an order by Stripe checkout session ID.
-func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string) (*db.Order, error) {
+// GetOrderBySession returns an order by Stripe checkout session ID when the access token matches.
+func (s *OrderService) GetOrderBySession(ctx context.Context, sessionID string, accessToken string) (*db.Order, error) {
 	if !strings.HasPrefix(sessionID, "cs_") {
 		return nil, &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "invalid session id"}
 	}
-	return s.store.GetOrderBySessionID(ctx, sessionID)
+	order, err := s.store.GetOrderBySessionID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, nil
+	}
+	if err := verifyOrderAccess(order, accessToken); err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
+func verifyOrderAccess(order *db.Order, accessToken string) error {
+	hash := ""
+	if order.AccessTokenHash != nil {
+		hash = *order.AccessTokenHash
+	}
+	if !auth.VerifyOrderAccessToken(accessToken, hash) {
+		return &api.AppError{Status: 401, Code: "UNAUTHORIZED", Message: "invalid or missing order access token"}
+	}
+	return nil
 }
 
 // CreateCheckoutSession validates input, creates a pending order, and starts Stripe checkout.
@@ -113,7 +149,12 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 	orderNumber := generateOrderNumber(orderID)
 	urls := s.buildCheckoutURLs(input.UIMode)
 
-	if err := s.insertPendingOrder(ctx, orderID, orderNumber, bodyHash, idempotencyKey, input, lineItems, urls); err != nil {
+	accessToken, tokenHash, err := auth.GenerateOrderAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.insertPendingOrder(ctx, orderID, orderNumber, bodyHash, tokenHash, idempotencyKey, input, lineItems, urls); err != nil {
 		return nil, err
 	}
 
@@ -123,7 +164,7 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 	}
 	params := s.buildStripeSessionParams(orderID, orderNumber, input, lineItems, urls, emailPtr)
 
-	session, err := s.stripe.CreateCheckoutSession(params)
+	session, err := s.stripe.CreateCheckoutSession(params, orderID)
 	if err != nil {
 		if cancelErr := s.store.CancelOrder(ctx, orderID, "stripe_api_error"); cancelErr != nil {
 			slog.Warn("failed to cancel order after stripe error", "order_id", orderID, "error", cancelErr)
@@ -137,7 +178,7 @@ func (s *OrderService) CreateCheckoutSession(ctx context.Context, idempotencyKey
 		return nil, &api.AppError{Status: 502, Code: "STRIPE_ERROR", Message: "failed to persist checkout session"}
 	}
 
-	return buildCheckoutResult(orderID, orderNumber, input.UIMode, session), nil
+	return buildCheckoutResult(orderID, orderNumber, input.UIMode, session, accessToken), nil
 }
 
 func canonicalBodyHash(input CreateCheckoutInput) (string, error) {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/mail"
 	"strings"
 
 	"github.com/LiamYaoLian/stripe-payment-integration-prototype/backend/internal/api"
@@ -28,8 +29,10 @@ func validateCheckoutInput(input CreateCheckoutInput) error {
 	if input.CustomerEmail != "" && len(input.CustomerEmail) > maxCustomerEmailLen {
 		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "customerEmail too long"}
 	}
-	if input.CustomerEmail != "" && !strings.Contains(input.CustomerEmail, "@") {
-		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "customerEmail invalid"}
+	if input.CustomerEmail != "" {
+		if _, err := mail.ParseAddress(input.CustomerEmail); err != nil {
+			return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "customerEmail invalid"}
+		}
 	}
 
 	seenProducts := make(map[string]bool, len(input.Items))
@@ -63,6 +66,9 @@ func validateMetadata(meta map[string]string) error {
 		return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata exceeds 50 keys"}
 	}
 	for key, value := range meta {
+		if strings.HasPrefix(key, "_") {
+			return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata keys cannot start with underscore"}
+		}
 		if len(key) > maxMetadataKeyLen {
 			return &api.AppError{Status: 400, Code: "VALIDATION_ERROR", Message: "metadata key too long"}
 		}

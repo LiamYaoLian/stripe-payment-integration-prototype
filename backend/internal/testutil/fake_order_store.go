@@ -105,12 +105,16 @@ func (f *FakeOrderStore) CreateOrderWithItems(_ context.Context, order db.Create
 	metaMap["_request_body_hash"] = order.RequestBodyHash
 	metaBytes, _ := json.Marshal(metaMap)
 
+	var tokenHash *string
+	if order.AccessTokenHash != "" {
+		tokenHash = &order.AccessTokenHash
+	}
 	o := &db.Order{
 		ID: order.ID, OrderNumber: order.OrderNumber, IdempotencyKey: order.IdempotencyKey,
 		Status: "pending", TotalAmountCents: order.TotalAmountCents, Currency: order.Currency,
 		CustomerEmail: order.CustomerEmail, UIMode: order.UIMode,
 		SuccessURL: order.SuccessURL, CancelURL: order.CancelURL, ReturnURL: order.ReturnURL,
-		Metadata: metaBytes,
+		Metadata: metaBytes, AccessTokenHash: tokenHash,
 	}
 	for _, it := range items {
 		o.Items = append(o.Items, db.OrderItem{

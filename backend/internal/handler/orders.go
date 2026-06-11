@@ -18,9 +18,13 @@ func NewOrdersHandler(orders *service.OrderService) *OrdersHandler {
 	return &OrdersHandler{orders: orders}
 }
 
+func orderAccessToken(r *http.Request) string {
+	return r.Header.Get("X-Order-Token")
+}
+
 func (h *OrdersHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	order, err := h.orders.GetOrder(r.Context(), id)
+	order, err := h.orders.GetOrder(r.Context(), id, orderAccessToken(r))
 	if err != nil {
 		writeServiceError(w, r, err)
 		return
@@ -34,7 +38,7 @@ func (h *OrdersHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 func (h *OrdersHandler) GetBySession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
-	order, err := h.orders.GetOrderBySession(r.Context(), sessionID)
+	order, err := h.orders.GetOrderBySession(r.Context(), sessionID, orderAccessToken(r))
 	if err != nil {
 		writeServiceError(w, r, err)
 		return

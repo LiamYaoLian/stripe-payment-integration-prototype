@@ -21,6 +21,9 @@ jobs:
           version: v1.62.2
           working-directory: backend
 
+      - name: Go build
+        run: cd backend && go build -o /tmp/server ./cmd/server
+
       - name: Go unit tests
         run: cd backend && go test -short ./...
 

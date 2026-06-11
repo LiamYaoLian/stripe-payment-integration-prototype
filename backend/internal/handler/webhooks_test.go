@@ -19,7 +19,7 @@ func TestWebhooksHandlerInvalidSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret)
+	svc := service.NewWebhookService(testutil.NewFakeWebhookStore(), testutil.TestWebhookSecret, true)
 	h := NewWebhooksHandler(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewReader(payload))
@@ -40,7 +40,7 @@ func TestWebhooksHandlerCheckoutCompletedPaid(t *testing.T) {
 	}
 	store := testutil.NewFakeWebhookStore()
 	store.Orders["cs_test_completed"] = &db.Order{ID: "ord-http", Status: "pending"}
-	svc := service.NewWebhookService(store, testutil.TestWebhookSecret)
+	svc := service.NewWebhookService(store, testutil.TestWebhookSecret, true)
 	h := NewWebhooksHandler(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewReader(payload))

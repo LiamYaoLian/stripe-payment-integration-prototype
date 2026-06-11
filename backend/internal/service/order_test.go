@@ -126,7 +126,7 @@ func assertAppError(t *testing.T, err error, status int, code string) {
 
 func TestGetOrderBySessionInvalidPrefix(t *testing.T) {
 	svc := NewOrderService(nil, nil, "http://localhost:5173")
-	_, err := svc.GetOrderBySession(t.Context(), "pi_invalid")
+	_, err := svc.GetOrderBySession(t.Context(), "pi_invalid", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

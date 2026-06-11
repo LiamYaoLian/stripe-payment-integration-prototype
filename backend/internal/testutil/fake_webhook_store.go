@@ -9,14 +9,15 @@ import (
 )
 
 type FakeWebhookStore struct {
-	Events       map[string]*db.WebhookEvent
-	Orders       map[string]*db.Order
-	Ignored      []string
-	Claimed      []string
-	StatusUpdate []string
+	Events             map[string]*db.WebhookEvent
+	Orders             map[string]*db.Order
+	Ignored            []string
+	Claimed            []string
+	StatusUpdate       []string
 	ClaimOK            bool
 	UpdateErr          error
 	GetWebhookEventErr error
+	CompleteErr        error
 }
 
 func NewFakeWebhookStore() *FakeWebhookStore {
@@ -58,14 +59,25 @@ func (f *FakeWebhookStore) ClaimWebhookEvent(_ context.Context, stripeEventID st
 	}
 	if event, ok := f.Events[stripeEventID]; ok {
 		event.ProcessingStatus = domain.WebhookStatusProcessing
+		now := time.Now().UTC()
+		event.ProcessingStartedAt = &now
 	}
 	return true, nil
 }
 
-func (f *FakeWebhookStore) MarkWebhookProcessed(_ context.Context, stripeEventID string, orderID *string) error {
-	if event, ok := f.Events[stripeEventID]; ok {
+func (f *FakeWebhookStore) CompleteWebhookProcessing(_ context.Context, completion db.WebhookCompletion) error {
+	if f.CompleteErr != nil {
+		return f.CompleteErr
+	}
+	if f.UpdateErr != nil {
+		return f.UpdateErr
+	}
+	if completion.NewStatus != "" && completion.OrderID != nil {
+		f.StatusUpdate = append(f.StatusUpdate, *completion.OrderID+":"+completion.NewStatus)
+	}
+	if event, ok := f.Events[completion.StripeEventID]; ok {
 		event.ProcessingStatus = domain.WebhookStatusProcessed
-		event.OrderID = orderID
+		event.OrderID = completion.OrderID
 	}
 	return nil
 }
@@ -82,12 +94,4 @@ func (f *FakeWebhookStore) GetOrderBySessionID(_ context.Context, sessionID stri
 		return order, nil
 	}
 	return nil, nil
-}
-
-func (f *FakeWebhookStore) UpdateOrderStatusIfAllowed(_ context.Context, orderID, newStatus string, _ *string, _ *time.Time, _ []string) (bool, error) {
-	if f.UpdateErr != nil {
-		return false, f.UpdateErr
-	}
-	f.StatusUpdate = append(f.StatusUpdate, orderID+":"+newStatus)
-	return true, nil
 }

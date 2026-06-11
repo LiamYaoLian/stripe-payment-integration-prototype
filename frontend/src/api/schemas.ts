@@ -41,6 +41,7 @@ export const checkoutSessionResultSchema = z
     sessionId: z.string(),
     url: z.string().optional(),
     clientSecret: z.string().optional(),
+    accessToken: z.string().optional(),
   })
   .refine((data) => Boolean(data.url || data.clientSecret), {
     message: 'checkout session must include url or clientSecret',
@@ -56,7 +57,10 @@ export function parseApiEnvelope<T extends z.ZodType>(dataSchema: T, body: unkno
     data: dataSchema.nullable(),
     error: errorBodySchema.nullable(),
   })
-  const envelope = envelopeSchema.parse(body)
+  const envelope = envelopeSchema.parse(body) as {
+    data: z.infer<T> | null
+    error: { code: string; message: string } | null
+  }
   if (envelope.error) {
     throw new ApiResponseError(envelope.error.message, envelope.error.code)
   }

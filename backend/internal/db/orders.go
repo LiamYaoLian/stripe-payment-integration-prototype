@@ -35,6 +35,7 @@ func (s *Store) scanOrder(ctx context.Context, query string, arg string) (*Order
 		&order.CustomerEmail, &order.StripeCheckoutSessionID, &order.StripePaymentIntentID,
 		&order.StripeCheckoutURL, &order.StripeClientSecret, &order.UIMode,
 		&order.SuccessURL, &order.CancelURL, &order.ReturnURL, &order.Metadata, &order.PaidAt, &order.CreatedAt, &order.UpdatedAt,
+		&order.AccessTokenHash,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -86,10 +87,11 @@ func (s *Store) CreateOrderWithItems(ctx context.Context, order CreateOrderParam
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO orders (id, order_number, idempotency_key, status, total_amount_cents, currency,
-			customer_email, ui_mode, success_url, cancel_url, return_url, metadata)
-		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7::ui_mode, $8, $9, $10, $11)`,
+			customer_email, ui_mode, success_url, cancel_url, return_url, metadata, access_token_hash)
+		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7::ui_mode, $8, $9, $10, $11, $12)`,
 		order.ID, order.OrderNumber, order.IdempotencyKey, order.TotalAmountCents, order.Currency,
 		order.CustomerEmail, order.UIMode, order.SuccessURL, order.CancelURL, order.ReturnURL, metaBytes,
+		nullIfEmpty(order.AccessTokenHash),
 	)
 	if err != nil {
 		return err
@@ -163,4 +165,21 @@ func (s *Store) UpdateOrderStatusIfAllowed(ctx context.Context, orderID, newStat
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// CancelStalePendingOrders cancels pending orders that never received a Stripe session.
+func (s *Store) CancelStalePendingOrders(ctx context.Context, olderThan time.Duration) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE orders SET status = 'canceled',
+			metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('cancel_reason', 'stale_checkout'),
+			updated_at = now()
+		WHERE status = 'pending'
+			AND stripe_checkout_session_id IS NULL
+			AND created_at < now() - $1::interval`,
+		olderThan.String(),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }

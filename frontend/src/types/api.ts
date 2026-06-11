@@ -5,6 +5,7 @@ export type OrderStatus =
   | 'failed'
   | 'expired'
   | 'canceled'
+  | 'refunded'
 
 export interface Product {
   id: string
@@ -36,6 +37,7 @@ export interface CheckoutSessionResult {
   sessionId: string
   url?: string
   clientSecret?: string
+  accessToken?: string
 }
 
 export interface ApiEnvelope<T> {

@@ -140,7 +140,7 @@ func marshalMetadata(metadata map[string]string) (json.RawMessage, error) {
 
 func (s *OrderService) insertPendingOrder(
 	ctx context.Context,
-	orderID, orderNumber, bodyHash string,
+	orderID, orderNumber, bodyHash, accessTokenHash string,
 	idempotencyKey string,
 	input CreateCheckoutInput,
 	lineItems *checkoutLineItems,
@@ -169,7 +169,7 @@ func (s *OrderService) insertPendingOrder(
 		ID: orderID, OrderNumber: orderNumber, IdempotencyKey: idemPtr,
 		TotalAmountCents: lineItems.total, Currency: lineItems.currency, CustomerEmail: emailPtr,
 		UIMode: input.UIMode, SuccessURL: urls.successURL, CancelURL: urls.cancelURL, ReturnURL: urls.returnURL,
-		Metadata: metaBytes, RequestBodyHash: bodyHash,
+		Metadata: metaBytes, RequestBodyHash: bodyHash, AccessTokenHash: accessTokenHash,
 	}, dbItems)
 }
 
@@ -245,9 +245,9 @@ func (s *OrderService) compensateFailedCheckout(ctx context.Context, orderID, se
 	}
 }
 
-func buildCheckoutResult(orderID, orderNumber string, uiMode string, session *stripe.CheckoutSession) *CheckoutResult {
+func buildCheckoutResult(orderID, orderNumber string, uiMode string, session *stripe.CheckoutSession, accessToken string) *CheckoutResult {
 	result := &CheckoutResult{
-		OrderID: orderID, OrderNumber: orderNumber, SessionID: session.ID,
+		OrderID: orderID, OrderNumber: orderNumber, SessionID: session.ID, AccessToken: accessToken,
 	}
 	if uiMode == domain.UIModeHosted {
 		result.URL = session.URL

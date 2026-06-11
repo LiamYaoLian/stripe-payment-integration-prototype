@@ -1,4 +1,12 @@
-export const TERMINAL_ORDER_STATUSES = ['paid', 'failed', 'expired', 'canceled'] as const
+import type { OrderStatus } from '../types/api'
+
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
+  'paid',
+  'failed',
+  'expired',
+  'canceled',
+  'refunded',
+]
 
 export const POLL_MAX_ATTEMPTS = 30
 export const POLL_INTERVAL_MS = 1000

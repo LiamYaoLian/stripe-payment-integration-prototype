@@ -22,6 +22,7 @@ func main() {
 		slog.Error("config load failed", "error", err)
 		os.Exit(1)
 	}
+	setupLogging(cfg.Env)
 
 	ctx := context.Background()
 	store, err := db.New(ctx, cfg.DatabaseURL)
@@ -31,10 +32,12 @@ func main() {
 	}
 	defer store.Close()
 
+	go runStaleOrderCleanup(store)
+
 	stripe := stripeclient.New(cfg.StripeSecretKey)
 	productSvc := service.NewProductService(store)
 	orderSvc := service.NewOrderService(store, stripe, cfg.AppFrontendURL)
-	webhookSvc := service.NewWebhookService(store, cfg.StripeWebhookSecret)
+	webhookSvc := service.NewWebhookService(store, cfg.StripeWebhookSecret, cfg.IgnoreStripeAPIVersionMismatch)
 
 	r := server.NewRouter(server.RouterDeps{
 		Health:     store,
@@ -45,14 +48,16 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
-		slog.Info("server starting", "port", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port, "env", cfg.Env)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server failed", "error", err)
 			os.Exit(1)
@@ -63,7 +68,35 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server shutdown failed", "error", err)
+	}
+	slog.Info("server stopped")
+}
+
+func setupLogging(env string) {
+	var handler slog.Handler
+	if env == "production" {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	}
+	slog.SetDefault(slog.New(handler))
+}
+
+func runStaleOrderCleanup(store *db.Store) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		count, err := store.CancelStalePendingOrders(context.Background(), 15*time.Minute)
+		if err != nil {
+			slog.Warn("stale order cleanup failed", "error", err)
+			continue
+		}
+		if count > 0 {
+			slog.Info("canceled stale pending orders", "count", count)
+		}
+	}
 }

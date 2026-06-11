@@ -12,7 +12,7 @@ type FakeStripe struct {
 	ExpireCalled bool
 }
 
-func (f *FakeStripe) CreateCheckoutSession(_ *stripe.CheckoutSessionParams) (*stripe.CheckoutSession, error) {
+func (f *FakeStripe) CreateCheckoutSession(_ *stripe.CheckoutSessionParams, _ string) (*stripe.CheckoutSession, error) {
 	if f.Err != nil {
 		return nil, f.Err
 	}
